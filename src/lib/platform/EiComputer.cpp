@@ -18,6 +18,7 @@
 #include "platform/EiClipboard.h"
 #include "platform/EiEventQueueBuffer.h"
 #include "platform/EiKeyState.h"
+#include "platform/EiRelativePointer.h"
 #include "platform/PortalInputCapture.h"
 #include "platform/PortalRemoteDesktop.h"
 
@@ -451,6 +452,10 @@ void EiComputer::stopEmulating() const
 
 void EiComputer::enter()
 {
+  // Relative samples accumulate only while the pointer is on another computer.
+  // Clear them on the way in so a bad sample cannot outlive the switch.
+  m_bufferDX = 0;
+  m_bufferDY = 0;
   m_isOnComputer = true;
   if (!m_isPrimary && m_eiAbs) {
     // Emulation is started lazily by ensureEmulating() on the first injected
@@ -476,6 +481,8 @@ void EiComputer::leave()
     stopEmulating();
   }
 
+  m_bufferDX = 0;
+  m_bufferDY = 0;
   m_isOnComputer = false;
 }
 
@@ -897,28 +904,27 @@ void EiComputer::onMotionEvent(ei_event *event)
 
   auto dx = ei_event_pointer_get_dx(event);
   auto dy = ei_event_pointer_get_dy(event);
-  if (!std::isfinite(dx) || !std::isfinite(dy)) {
-    LOG_WARN("dropping pointer motion with non-finite delta: %g,%g", dx, dy);
-    return;
-  }
 
   if (m_isOnComputer) {
+    // On this computer the relative sample is unused; the portal reports the
+    // cursor position directly. A non-finite delta must not swallow that event.
     LOG_DEBUG("event: motion on primary x=%i y=%i", m_cursorX, m_cursorY);
     sendEvent(EventTypes::PrimaryComputerMotionOnPrimary, MotionInfo::alloc(m_cursorX, m_cursorY));
     if (m_portalInputCapture->isActive()) {
       m_portalInputCapture->release();
     }
-  } else {
-    m_bufferDX += dx;
-    m_bufferDY += dy;
-    auto pixelDx = static_cast<std::int32_t>(m_bufferDX);
-    auto pixelDy = static_cast<std::int32_t>(m_bufferDY);
-    if (pixelDx || pixelDy) {
-      LOG_VERBOSE("event: motion on secondary x=%d y=%d", pixelDx, pixelDy);
-      sendEvent(EventTypes::PrimaryComputerMotionOnSecondary, MotionInfo::alloc(pixelDx, pixelDy));
-      m_bufferDX -= pixelDx;
-      m_bufferDY -= pixelDy;
-    }
+    return;
+  }
+
+  const auto motion = accumulateRelativePointer(m_bufferDX, m_bufferDY, dx, dy);
+  if (motion.droppedX || motion.droppedY) {
+    LOG_WARN("dropping relative pointer delta x=%g y=%g", dx, dy);
+  } else if (motion.reset) {
+    LOG_WARN("reset poisoned relative pointer accumulator");
+  }
+  if (motion.x || motion.y) {
+    LOG_VERBOSE("event: motion on secondary x=%d y=%d", motion.x, motion.y);
+    sendEvent(EventTypes::PrimaryComputerMotionOnSecondary, MotionInfo::alloc(motion.x, motion.y));
   }
 }
 
