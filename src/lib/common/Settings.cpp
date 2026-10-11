@@ -6,10 +6,14 @@
 
 #include "Settings.h"
 
+#include "LogLevel.h"
+#include "NetworkProtocol.h"
 #include "UrlConstants.h"
+#include "common/KeyboardModifier.h"
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QFileSystemWatcher>
 #include <QRect>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -30,7 +34,9 @@ void Settings::setSettingsFile(const QString &settingsFile)
   if (instance()->m_settings)
     instance()->m_settings->deleteLater();
 
+  instance()->m_settingsWatcher->removePath(instance()->m_settings->fileName());
   instance()->m_settings = new QSettings(settingsFile, QSettings::IniFormat, instance());
+  instance()->m_settingsWatcher->addPath(settingsFile);
   instance()->m_settingsProxy->load(settingsFile);
   qInfo().noquote() << "settings file changed:" << instance()->m_settings->fileName();
 
@@ -38,6 +44,7 @@ void Settings::setSettingsFile(const QString &settingsFile)
   instance()->cleanSettings();
   instance()->cleanStateSettings();
   instance()->setupComputerName();
+  instance()->checkIfSettingsWritableChange();
 }
 
 void Settings::setStateFile(const QString &stateFile)
@@ -54,7 +61,13 @@ void Settings::setStateFile(const QString &stateFile)
   qInfo().noquote() << "state file changed:" << instance()->m_stateSettings->fileName();
 }
 
-Settings::Settings(QObject *parent) : QObject(parent)
+void Settings::clearState()
+{
+  instance()->m_stateSettings->clear();
+  instance()->m_stateSettings->sync();
+}
+
+Settings::Settings(QObject *parent) : QObject(parent), m_settingsWatcher{new QFileSystemWatcher(this)}
 {
   QString fileToLoad;
 #ifdef Q_OS_WIN
@@ -74,6 +87,9 @@ Settings::Settings(QObject *parent) : QObject(parent)
     fileToLoad = UserSettingFile;
 
   m_settings = new QSettings(fileToLoad, QSettings::IniFormat, this);
+  m_settingsWritable = m_settings->isWritable();
+  m_settingsWatcher->addPath(m_settings->fileName());
+  connect(m_settingsWatcher, &QFileSystemWatcher::fileChanged, this, &Settings::checkIfSettingsWritableChange);
   m_settingsProxy = std::make_shared<QSettingsProxy>();
   m_settingsProxy->load(fileToLoad);
   qInfo().noquote() << "initial settings file:" << m_settings->fileName();
@@ -94,9 +110,131 @@ Settings::Settings(QObject *parent) : QObject(parent)
 
 void Settings::upgradeSettings()
 {
+  if (const auto logValue = m_settings->value(Settings::Log::Level).toString();
+      !LogLevel::logLevelOptions().contains(logValue, Qt::CaseInsensitive))
+    m_settings->setValue(Settings::Log::Level, defaultValue(Settings::Log::Level));
+  const auto screenKeys = m_settings->allKeys().filter("screen_");
+  for (const auto &key : screenKeys) {
+    auto newKey = key;
+    newKey.replace("screen_", "computer_");
+    m_settings->setValue(newKey, m_settings->value(key));
+  }
   for (const auto [oldKey, newKey] : m_upgradedMap.asKeyValueRange()) {
-    if (m_settings->contains(oldKey) && !m_settings->contains(newKey)) {
+    if (m_settings->contains(newKey) || !m_settings->contains(oldKey))
+      continue;
+    if (oldKey == InternalConfig::Protocol) {
+      m_settings->setValue(newKey, networkProtocolToOption(NetworkProtocol(m_settings->value(oldKey).toInt())));
+    } else if (oldKey == InternalConfig::ClipboardSharingSize) {
+      m_settings->setValue(newKey, m_settings->value(oldKey).toUInt() / 1024);
+    } else {
       m_settings->setValue(newKey, m_settings->value(oldKey));
+    }
+  }
+
+  // move to computers
+
+  m_settings->beginGroup("internalConfig");
+  const int screenArraySize = m_settings->beginReadArray("screens");
+  m_settings->endArray();
+  m_settings->endGroup();
+
+  for (int i = 1; i <= screenArraySize; i++) {
+    m_settings->beginGroup("internalConfig");
+    m_settings->beginReadArray("screens");
+    m_settings->setArrayIndex(i);
+    const auto name = m_settings->value("name", {}).toString();
+
+    if (name.isEmpty()) {
+      m_settings->endArray();
+      m_settings->endGroup();
+      continue;
+    }
+
+    int switchCornerSize = 0;
+    if (m_settings->contains("switchCornerSize"))
+      switchCornerSize = m_settings->value("switchCornerSize", 0).toInt();
+
+    QList<bool> fixTemp;
+    if (m_settings->contains("fixArray/size")) {
+      int fixArraySize = m_settings->beginReadArray("fixArray");
+      for (int j = 0; j < fixArraySize; j++) {
+        m_settings->setArrayIndex(j);
+        fixTemp.append(m_settings->value("fix").toBool());
+      }
+      m_settings->endArray();
+    }
+
+    QList<bool> cornerTemp;
+    if (m_settings->contains("switchCornerArray/size")) {
+      int cornerArraySize = m_settings->beginReadArray("switchCornerArray");
+      for (int j = 0; j < cornerArraySize; j++) {
+        m_settings->setArrayIndex(j);
+        cornerTemp.append(m_settings->value("switchCorner").toBool());
+      }
+      m_settings->endArray();
+    }
+
+    QList<QString> modifierTemp;
+    if (m_settings->contains("modifierArray/size")) {
+      int modifierArraySize = m_settings->beginReadArray("modifierArray");
+      for (int j = 0; j < modifierArraySize; j++) {
+        m_settings->setArrayIndex(j);
+        auto modifier = m_settings->value("modifier").toInt();
+        modifierTemp.append(
+            modifier == -1 ? valueToKeyboardModifierOption(j) : valueToKeyboardModifierOption(modifier)
+        );
+      }
+      m_settings->endArray();
+    }
+
+    QStringList aliases;
+    if (m_settings->contains("aliasArray/size")) {
+      int aliasList = m_settings->beginReadArray("aliasArray");
+      for (int j = 0; j < aliasList; j++) {
+        m_settings->setArrayIndex(j);
+        aliases.append(m_settings->value("alias").toString());
+      }
+      m_settings->endArray();
+      aliases.removeDuplicates();
+    }
+    m_settings->endArray();
+    m_settings->endGroup();
+
+    // Write Settings
+    if (!m_settings->contains(Settings::Computer::Name.arg(name)))
+      m_settings->setValue(Settings::Computer::Name.arg(name), name);
+    if (!m_settings->contains(Settings::Computer::SwitchCornerSize.arg(name)))
+      m_settings->setValue(Settings::Computer::SwitchCornerSize.arg(name), switchCornerSize);
+    if (!m_settings->contains(Settings::Computer::HalfDuplexCapsLock.arg(name)))
+      m_settings->setValue(Settings::Computer::HalfDuplexCapsLock.arg(name), fixTemp.at(0));
+    if (!m_settings->contains(Settings::Computer::HalfDuplexNumLock.arg(name)))
+      m_settings->setValue(Settings::Computer::HalfDuplexNumLock.arg(name), fixTemp.at(1));
+    if (!m_settings->contains(Settings::Computer::HalfDuplexScrollLock.arg(name)))
+      m_settings->setValue(Settings::Computer::HalfDuplexScrollLock.arg(name), fixTemp.at(2));
+    if (!m_settings->contains(Settings::Computer::XtestIsXineramaUnaware.arg(name)))
+      m_settings->setValue(Settings::Computer::XtestIsXineramaUnaware.arg(name), fixTemp.at(3));
+    if (!m_settings->contains(Settings::Computer::SwitchCornerTopLeft.arg(name)))
+      m_settings->setValue(Settings::Computer::SwitchCornerTopLeft.arg(name), cornerTemp.at(0));
+    if (!m_settings->contains(Settings::Computer::SwitchCornerTopRight.arg(name)))
+      m_settings->setValue(Settings::Computer::SwitchCornerTopRight.arg(name), cornerTemp.at(1));
+    if (!m_settings->contains(Settings::Computer::SwitchCornerBottomLeft.arg(name)))
+      m_settings->setValue(Settings::Computer::SwitchCornerBottomLeft.arg(name), cornerTemp.at(2));
+    if (!m_settings->contains(Settings::Computer::SwitchCornerBottomRight.arg(name)))
+      m_settings->setValue(Settings::Computer::SwitchCornerBottomRight.arg(name), cornerTemp.at(3));
+    if (!m_settings->contains(Settings::Computer::ModifierShift.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierShift.arg(name), modifierTemp.at(0));
+    if (!m_settings->contains(Settings::Computer::ModifierCtrl.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierCtrl.arg(name), modifierTemp.at(1));
+    if (!m_settings->contains(Settings::Computer::ModifierAlt.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierAlt.arg(name), modifierTemp.at(2));
+    if (!m_settings->contains(Settings::Computer::ModifierMeta.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierMeta.arg(name), modifierTemp.at(3));
+    if (!m_settings->contains(Settings::Computer::ModifierSuper.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierSuper.arg(name), modifierTemp.at(4));
+    if (!m_settings->contains(Settings::Computer::ModifierAltGr.arg(name)))
+      m_settings->setValue(Settings::Computer::ModifierAltGr.arg(name), modifierTemp.at(5));
+    if (!m_settings->contains(Settings::Computer::Aliases.arg(name))) {
+      m_settings->setValue(Settings::Computer::Aliases.arg(name), aliases);
     }
   }
 }
@@ -105,11 +243,13 @@ void Settings::cleanSettings()
 {
   const QStringList keys = m_settings->allKeys();
   for (const QString &key : keys) {
+    if (m_oldServerConfigKeys.contains(key) || key.startsWith("screen_"))
+      m_settings->remove(key);
     if (key.startsWith(QStringLiteral("internalConfig")))
       continue;
-    if (!m_validKeys.contains(key))
+    if (const auto group = key.mid(0, key.indexOf('/')); !m_validKeys.contains(key) && m_validGroup.contains(group))
       m_settings->remove(key);
-    if (m_settings->value(key).toString().isEmpty())
+    if (!m_settings->value(key).isValid())
       m_settings->remove(key);
   }
 }
@@ -153,15 +293,26 @@ QString Settings::cleanComputerName(const QString &name)
   return cleanName;
 }
 
-int Settings::logLevelToInt(const QString &level)
+void Settings::checkIfSettingsWritableChange()
 {
-  if (level.isEmpty() || !m_logLevels.contains(level, Qt::CaseInsensitive))
-    return 4;
-  return static_cast<int>(m_logLevels.indexOf(level, 0, Qt::CaseInsensitive));
+  if (!instance()->m_settingsWatcher->files().contains(Settings::settingsFile()))
+    m_settingsWatcher->addPath(Settings::settingsFile());
+
+  bool writable = Settings::isWritable();
+  if (writable == m_settingsWritable)
+    return;
+  qDebug() << QString("Setting are now %1").arg(writable ? "writable" : "readonly");
+  instance()->m_settingsWritable = writable;
+  Q_EMIT instance()->settingsWritableChanged(writable);
 }
 
 QVariant Settings::defaultValue(const QString &key)
 {
+  if (key.startsWith(QStringLiteral("computer_"))) {
+    const auto computerKey = key.mid(key.indexOf('/') + 1);
+    return computerDefaults(computerKey);
+  }
+
   if (m_defaultFalseValues.contains(key))
     return false;
 
@@ -178,7 +329,7 @@ QVariant Settings::defaultValue(const QString &key)
     return QStringLiteral("%1/%2.log").arg(QDir::homePath(), kAppId);
 
   if (key == Log::Level)
-    return 4; // INFO
+    return QVariant::fromValue(LogLevel::Level::Info).toString();
 
   if (key == Daemon::Elevate)
     return !Settings::isPortableMode();
@@ -206,12 +357,25 @@ QVariant Settings::defaultValue(const QString &key)
   if (key == Client::YScrollScale || key == Client::XScrollScale)
     return 1.0;
 
-  return QVariant();
-}
+  if (key == Server::Protocol)
+    return networkProtocolToOption(NetworkProtocol::Barrier);
 
-QString Settings::logLevelText()
-{
-  return Settings::m_logLevels.at(Settings::value(Log::Level).toInt());
+  if (key == Server::GridWidth)
+    return kServerGridWidth;
+
+  if (key == Server::GridHeight)
+    return kServerGridHeight;
+
+  if (key == Server::Heartbeat)
+    return 5000;
+
+  if (key == Server::SwitchDelay || key == Server::SwitchDoubleTap)
+    return 250;
+
+  if (key == Server::ClipboardSize)
+    return 3; // 3 MiB
+
+  return QVariant();
 }
 
 QSettingsProxy &Settings::proxy()
@@ -219,8 +383,15 @@ QSettingsProxy &Settings::proxy()
   return *instance()->m_settingsProxy;
 }
 
+NetworkProtocol Settings::networkProtocol()
+{
+  return networkProtocolFromString(Settings::value(Server::Protocol).toString());
+}
+
 void Settings::save(bool emitSaving)
 {
+  if (!Settings::isWritable())
+    qWarning().noquote() << "settings not saved, file is read-only:" << Settings::settingsFile();
   if (emitSaving)
     Q_EMIT instance()->serverSettingsChanged();
   instance()->m_settings->sync();
@@ -238,6 +409,12 @@ QString Settings::serverConfigFile()
   return useExt ? value(Server::ExternalConfigFile).toString() : defaultValue(Server::ExternalConfigFile).toString();
 }
 
+bool Settings::isServerConfigFileReadable()
+{
+  auto file = QFile(serverConfigFile());
+  return file.open(QFile::ReadOnly);
+}
+
 bool Settings::isWritable()
 {
   return instance()->m_settings->isWritable();
@@ -251,7 +428,7 @@ bool Settings::isPortableMode()
 
 QString Settings::settingsFile()
 {
-  return instance()->m_settings->fileName();
+  return QFileInfo(instance()->m_settings->fileName()).absoluteFilePath();
 }
 
 QString Settings::settingsPath()
@@ -271,12 +448,17 @@ QString Settings::tlsDir()
 
 QString Settings::tlsTrustedServersDb()
 {
-  return QStringLiteral("%1/trusted-servers").arg(instance()->tlsDir());
+  return QFileInfo(QStringLiteral("%1/trusted-servers").arg(instance()->tlsDir())).absoluteFilePath();
 }
 
 QString Settings::tlsTrustedClientsDb()
 {
-  return QStringLiteral("%1/trusted-clients").arg(instance()->tlsDir());
+  return QFileInfo(QStringLiteral("%1/trusted-clients").arg(instance()->tlsDir())).absoluteFilePath();
+}
+
+QString Settings::logLevelText()
+{
+  return Settings::value(Log::Level).toString();
 }
 
 void Settings::setValue(const QString &key, const QVariant &value)
@@ -318,5 +500,49 @@ QString Settings::portableSettingsFile()
 {
   static const auto filename =
       QStringLiteral("%1/settings/%2.conf").arg(QCoreApplication::applicationDirPath(), kAppName);
-  return filename;
+  return QFileInfo(filename).absoluteFilePath();
+}
+
+void Settings::removeUnknownComputers(const QStringList &knownComputers)
+{
+  const QStringList knownGroups = instance()->m_settings->childGroups();
+  for (const auto &group : knownGroups) {
+    if (m_validGroup.contains(group) || knownComputers.contains(group))
+      continue;
+    instance()->m_settings->remove(group);
+  }
+}
+
+QVariant Settings::computerDefaults(const QString &key)
+{
+  if (key.contains(QStringLiteral("halfDuplex")) || key.contains("xtestIsXineramaUnaware") || key.contains("X11") ||
+      key.contains("Left") || key.contains("Right"))
+    return false;
+  if (key.endsWith("switchCornerSize"))
+    return 0;
+  if (key == "modifierAlt")
+    return keyboardModifierToOption(KeyboardModifier::Alt);
+  if (key == "modifierAltGr")
+    return keyboardModifierToOption(KeyboardModifier::AltGr);
+  if (key == "modifierCtrl")
+    return keyboardModifierToOption(KeyboardModifier::Ctrl);
+  if (key == "modifierMeta")
+    return keyboardModifierToOption(KeyboardModifier::Meta);
+  if (key == "modifierShift")
+    return keyboardModifierToOption(KeyboardModifier::Shift);
+  if (key == "modifierSuper")
+    return keyboardModifierToOption(KeyboardModifier::Super);
+  return QVariant();
+}
+
+QStringList Settings::knownComputers()
+{
+  const QStringList knownGroups = instance()->m_settings->childGroups();
+  QStringList computers;
+  for (const auto &group : knownGroups) {
+    if (group.startsWith("computer_")) {
+      computers.append(Settings::value(QStringLiteral("%1/name").arg(group)).toString());
+    }
+  }
+  return computers;
 }

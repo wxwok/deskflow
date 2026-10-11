@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -211,6 +211,16 @@ public:
   */
   virtual size_t writeSocket(ArchSocket s, const void *buf, size_t len) = 0;
 
+  //! Reset the writable poll hint for a socket
+  /*!
+  Tells pollSocket() to wait for a fresh writable notification instead of
+  assuming the socket is still writable. Needed by callers that write to a
+  socket without going through writeSocket(), e.g. OpenSSL's SSL_write().
+  */
+  virtual void resetPollWriteOnSocket(ArchSocket)
+  {
+  }
+
   //! Check error on socket
   /*!
   If the socket \c s is in an error state then throws an appropriate
@@ -224,6 +234,12 @@ public:
   messages into one packet (false).  Returns the previous state.
   */
   virtual bool setNoDelayOnSocket(ArchSocket, bool noDelay) = 0;
+
+  //! Turn keep-alive on or off on socket
+  /*!
+  Set socket to use keep-alive (true) or not (false).
+  */
+  virtual void setKeepAliveOnSocket(ArchSocket, bool keepAlive) = 0;
 
   //! Turn address reuse on or off on socket
   /*!

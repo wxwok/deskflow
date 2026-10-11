@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2025 - 2026 Deskflow Developers
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -13,13 +13,13 @@
 #include "base/IJob.h"
 #include "base/Log.h"
 #include "base/TMethodJob.h"
+#include "deskflow/DisplayException.h"
 #include "deskflow/IScreenSaver.h"
-#include "deskflow/ScreenException.h"
 #include "deskflow/win32/AppUtilWindows.h"
 #include "mt/Lock.h"
 #include "mt/Thread.h"
+#include "platform/MSWindowsComputer.h"
 #include "platform/MSWindowsHook.h"
-#include "platform/MSWindowsScreen.h"
 
 #include <malloc.h>
 
@@ -115,7 +115,7 @@ MSWindowsDesks::MSWindowsDesks(
 )
     : m_isPrimary(isPrimary),
       m_useHooks(useHooks),
-      m_isOnScreen(m_isPrimary),
+      m_isOnComputer(m_isPrimary),
       m_screensaver(screensaver),
       m_deskReady(&m_mutex, false),
       m_updateKeys(updateKeys),
@@ -165,7 +165,7 @@ void MSWindowsDesks::disable()
   // destroy desks
   removeDesks();
 
-  m_isOnScreen = m_isPrimary;
+  m_isOnComputer = m_isPrimary;
 }
 
 void MSWindowsDesks::enter()
@@ -181,6 +181,10 @@ void MSWindowsDesks::leave(HKL keyLayout)
 void MSWindowsDesks::resetOptions()
 {
   m_leaveForegroundOption = false;
+  m_relativeMouseMoves = false;
+  for (auto &entry : m_desks) {
+    entry.second->m_hasRelativeRestorePosition = false;
+  }
 }
 
 void MSWindowsDesks::setOptions(const OptionsList &options)
@@ -188,7 +192,9 @@ void MSWindowsDesks::setOptions(const OptionsList &options)
   for (uint32_t i = 0, n = (uint32_t)options.size(); i < n; i += 2) {
     if (options[i] == kOptionWin32KeepForeground) {
       m_leaveForegroundOption = (options[i + 1] != 0);
-      LOG_DEBUG1("%s the foreground window", m_leaveForegroundOption ? "don\'t grab" : "grab");
+      LOG_VERBOSE("%s the foreground window", m_leaveForegroundOption ? "don\'t grab" : "grab");
+    } else if (options[i] == kOptionRelativeMouseMoves) {
+      m_relativeMouseMoves = (options[i + 1] != 0);
     }
   }
 }
@@ -309,6 +315,39 @@ void MSWindowsDesks::fakeMouseWheel(int32_t xDelta, int32_t yDelta) const
   sendMessage(DESKFLOW_MSG_FAKE_WHEEL, xDelta, yDelta);
 }
 
+void MSWindowsDesks::saveRelativeRestorePosition(Desk *desk) const
+{
+  POINT pos{0, 0};
+  if (!GetCursorPos(&pos)) {
+    LOG_DEBUG(
+        "could not save relative restore position on desk \"%ls\", error: %lu", desk->m_name.c_str(), GetLastError()
+    );
+    return;
+  }
+
+  desk->m_relativeRestoreX = pos.x;
+  desk->m_relativeRestoreY = pos.y;
+  desk->m_hasRelativeRestorePosition = true;
+  LOG_VERBOSE(
+      "saved relative restore position on desk \"%ls\": %+d,%+d", desk->m_name.c_str(), desk->m_relativeRestoreX,
+      desk->m_relativeRestoreY
+  );
+}
+
+bool MSWindowsDesks::restoreRelativeCursorPosition(Desk *desk) const
+{
+  if (!desk->m_hasRelativeRestorePosition) {
+    return false;
+  }
+
+  LOG_VERBOSE(
+      "restoring relative cursor position on desk \"%ls\": %+d,%+d", desk->m_name.c_str(), desk->m_relativeRestoreX,
+      desk->m_relativeRestoreY
+  );
+  deskMouseMove(desk->m_relativeRestoreX, desk->m_relativeRestoreY);
+  return true;
+}
+
 void MSWindowsDesks::sendMessage(UINT msg, WPARAM wParam, LPARAM lParam) const
 {
   if (m_activeDesk != nullptr && m_activeDesk->m_window != nullptr) {
@@ -327,7 +366,7 @@ MSWindowsDesks::createBlankCursor() const
   uint8_t *cursorXOR = new uint8_t[ch * ((cw + 31) >> 2)];
   memset(cursorAND, 0xff, ch * ((cw + 31) >> 2));
   memset(cursorXOR, 0x00, ch * ((cw + 31) >> 2));
-  HCURSOR c = CreateCursor(MSWindowsScreen::getWindowInstance(), 0, 0, cw, ch, cursorAND, cursorXOR);
+  HCURSOR c = CreateCursor(MSWindowsComputer::getWindowInstance(), 0, 0, cw, ch, cursorAND, cursorXOR);
   delete[] cursorXOR;
   delete[] cursorAND;
   return c;
@@ -348,7 +387,7 @@ ATOM MSWindowsDesks::createDeskWindowClass(bool isPrimary) const
   classInfo.lpfnWndProc = isPrimary ? &MSWindowsDesks::primaryDeskProc : &MSWindowsDesks::secondaryDeskProc;
   classInfo.cbClsExtra = 0;
   classInfo.cbWndExtra = 0;
-  classInfo.hInstance = MSWindowsScreen::getWindowInstance();
+  classInfo.hInstance = MSWindowsComputer::getWindowInstance();
   classInfo.hIcon = nullptr;
   classInfo.hCursor = m_cursor;
   classInfo.hbrBackground = nullptr;
@@ -361,7 +400,7 @@ ATOM MSWindowsDesks::createDeskWindowClass(bool isPrimary) const
 void MSWindowsDesks::destroyClass(ATOM windowClass) const
 {
   if (windowClass != 0) {
-    UnregisterClass(MAKEINTATOM(windowClass), MSWindowsScreen::getWindowInstance());
+    UnregisterClass(MAKEINTATOM(windowClass), MSWindowsComputer::getWindowInstance());
   }
 }
 
@@ -369,11 +408,11 @@ HWND MSWindowsDesks::createWindow(ATOM windowClass, const wchar_t *name) const
 {
   HWND window = CreateWindowEx(
       WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW, MAKEINTATOM(windowClass), name, WS_POPUP, 0, 0, 1, 1, nullptr, nullptr,
-      MSWindowsScreen::getWindowInstance(), nullptr
+      MSWindowsComputer::getWindowInstance(), nullptr
   );
   if (window == nullptr) {
     LOG_ERR("failed to create window: %d", GetLastError());
-    throw ScreenOpenFailureException();
+    throw DisplayOpenFailureException();
   }
   return window;
 }
@@ -415,7 +454,7 @@ void MSWindowsDesks::deskMouseMove(int32_t x, int32_t y) const
 {
   // when using absolute positioning with mouse_event(),
   // the normalized device coordinates range over only
-  // the primary screen.
+  // the primary computer.
   int32_t w = GetSystemMetrics(SM_CXSCREEN);
   int32_t h = GetSystemMetrics(SM_CYSCREEN);
   send_mouse_input(
@@ -470,20 +509,20 @@ void setCursorVisibility(bool visible)
   int attempts = 0;
   while (attempts++ < max) {
     const auto displayCounter = ShowCursor(visible ? TRUE : FALSE);
-    LOG_DEBUG1("cursor display counter: %d", displayCounter);
+    LOG_VERBOSE("cursor display counter: %d", displayCounter);
 
     if (visible) {
       if (displayCounter < 0) {
-        LOG_DEBUG1("cursor still hidden, retrying, attempt: %d", attempts);
+        LOG_VERBOSE("cursor still hidden, retrying, attempt: %d", attempts);
       } else {
-        LOG_DEBUG1("cursor is now visible, attempts: %d", attempts);
+        LOG_VERBOSE("cursor is now visible, attempts: %d", attempts);
         return;
       }
     } else {
       if (displayCounter >= 0) {
-        LOG_DEBUG1("cursor still visible, retrying, attempt: %d", attempts);
+        LOG_VERBOSE("cursor still visible, retrying, attempt: %d", attempts);
       } else {
-        LOG_DEBUG1("cursor is now hidden, attempts: %d", attempts);
+        LOG_VERBOSE("cursor is now hidden, attempts: %d", attempts);
         return;
       }
     }
@@ -496,6 +535,9 @@ void MSWindowsDesks::deskEnter(Desk *desk)
 {
   if (!m_isPrimary) {
     ReleaseCapture();
+    if (m_relativeMouseMoves) {
+      restoreRelativeCursorPosition(desk);
+    }
   }
 
   setCursorVisibility(true);
@@ -519,6 +561,10 @@ void MSWindowsDesks::deskEnter(Desk *desk)
 
 void MSWindowsDesks::deskLeave(Desk *desk, HKL keyLayout)
 {
+  if (!m_isPrimary && m_relativeMouseMoves) {
+    saveRelativeRestorePosition(desk);
+  }
+
   setCursorVisibility(false);
 
   if (m_isPrimary) {
@@ -588,13 +634,13 @@ void MSWindowsDesks::deskLeave(Desk *desk, HKL keyLayout)
 
     // windows can take a while to hide the cursor, so wait a few milliseconds to ensure the cursor
     // is hidden before centering. this doesn't seem to affect the fluidity of the transition.
-    // without this, the cursor appears to flicker in the center of the screen which is annoying.
+    // without this, the cursor appears to flicker in the center of the computer which is annoying.
     // a slightly more elegant but complex solution could be to use a timed event.
     // 30 ms seems to work well enough without making the transition feel janky; a lower number
     // would be better but 10 ms doesn't seem to be quite long enough, as we get noticeable flicker.
     // this is largely a balance and out of our control, since windows can be unpredictable...
     // maybe another approach would be to repeatedly check the cursor visibility until it is hidden.
-    LOG_DEBUG1("centering cursor on leave: %+d,%+d", m_xCenter, m_yCenter);
+    LOG_VERBOSE("centering cursor on leave: %+d,%+d", m_xCenter, m_yCenter);
     ARCH->sleep(0.03);
     deskMouseMove(m_xCenter, m_yCenter);
   }
@@ -659,7 +705,7 @@ void MSWindowsDesks::deskThread(const void *vdesk)
           break;
         }
 
-        // a window on the primary screen with low-level hooks
+        // a window on the primary computer with low-level hooks
         // should never activate.
         if (desk->m_window)
           EnableWindow(desk->m_window, desk->m_lowLevel ? FALSE : TRUE);
@@ -667,12 +713,12 @@ void MSWindowsDesks::deskThread(const void *vdesk)
       break;
 
     case DESKFLOW_MSG_ENTER:
-      m_isOnScreen = true;
+      m_isOnComputer = true;
       deskEnter(desk);
       break;
 
     case DESKFLOW_MSG_LEAVE:
-      m_isOnScreen = false;
+      m_isOnComputer = false;
       m_keyLayout = (HKL)msg.wParam;
       deskLeave(desk, m_keyLayout);
       break;
@@ -760,7 +806,7 @@ MSWindowsDesks::Desk *MSWindowsDesks::addDesk(const std::wstring &name, HDESK hd
   desk->m_targetID = GetCurrentThreadId();
   desk->m_thread = new Thread(new TMethodJob<MSWindowsDesks>(this, &MSWindowsDesks::deskThread, desk));
   waitForDesk();
-  m_desks.insert(std::make_pair(name, desk));
+  m_desks.try_emplace(name, desk);
   return desk;
 }
 
@@ -801,8 +847,8 @@ void MSWindowsDesks::checkDesk()
   // stop.
   if (name != m_activeDeskName && !m_screensaver->isActive()) {
     // show cursor on previous desk
-    bool wasOnScreen = m_isOnScreen;
-    if (!wasOnScreen) {
+    bool wasOnComputer = m_isOnComputer;
+    if (!wasOnComputer) {
       sendMessage(DESKFLOW_MSG_ENTER, 0, 0);
     }
 
@@ -811,7 +857,7 @@ void MSWindowsDesks::checkDesk()
     LOG_DEBUG("switched to desk \"%ls\"", name.c_str());
     bool syncKeys = false;
     if (isDeskAccessible(desk)) {
-      LOG_DEBUG("desktop is accessible - syncing keyboard state after desk switch");
+      LOG_DEBUG("desktop is accessible, syncing keyboard state after desk switch");
       syncKeys = true;
     } else {
       LOG_DEBUG("desktop is inaccessible");
@@ -823,7 +869,7 @@ void MSWindowsDesks::checkDesk()
     sendMessage(DESKFLOW_MSG_SWITCH, 0, 0);
 
     // hide cursor on new desk
-    if (!wasOnScreen) {
+    if (!wasOnComputer) {
       sendMessage(DESKFLOW_MSG_LEAVE, (WPARAM)m_keyLayout, 0);
     }
 
@@ -858,7 +904,7 @@ void MSWindowsDesks::handleCheckDesk()
   checkDesk();
 
   // also check if screen saver is running if on a modern OS and
-  // this is the primary screen.
+  // this is the primary computer.
   if (m_isPrimary) {
     BOOL running;
     SystemParametersInfo(SPI_GETSCREENSAVERRUNNING, 0, &running, FALSE);

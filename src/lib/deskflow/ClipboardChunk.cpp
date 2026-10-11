@@ -1,19 +1,32 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2015 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2015 - 2016 Synergy App Ltd
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
 
 #include "deskflow/ClipboardChunk.h"
 
 #include "base/Log.h"
-#include "base/String.h"
 #include "deskflow/ProtocolTypes.h"
 #include "deskflow/ProtocolUtil.h"
 #include "io/IStream.h"
 #include <cstring>
+#include <limits>
 
-size_t ClipboardChunk::s_expectedSize = 0;
+namespace {
+
+void clearCachedData(std::string &dataCached)
+{
+  dataCached.clear();
+  dataCached.shrink_to_fit();
+}
+
+bool wouldExceed(size_t currentSize, size_t extraSize, size_t limit)
+{
+  return currentSize > limit || extraSize > limit - currentSize;
+}
+
+} // namespace
 
 ClipboardChunk::ClipboardChunk(size_t size) : Chunk(size)
 {
@@ -62,37 +75,99 @@ ClipboardChunk *ClipboardChunk::end(ClipboardID id, uint32_t sequence)
   return end;
 }
 
-TransferState
-ClipboardChunk::assemble(deskflow::IStream *stream, std::string &dataCached, ClipboardID &id, uint32_t &sequence)
+TransferState ClipboardChunk::assemble(
+    deskflow::IStream *stream, std::string &dataCached, ClipboardID &id, uint32_t &sequence,
+    ClipboardChunkAssemblyState &state, size_t maxDataSize
+)
 {
   using enum TransferState;
   uint8_t mark;
   std::string data;
+  auto reset = [&]() {
+    state = {};
+    clearCachedData(dataCached);
+  };
+  auto isOversize = [&]() { return state.expectedSize > maxDataSize; };
 
   if (!ProtocolUtil::readf(stream, kMsgDClipboard + 4, &id, &sequence, &mark, &data)) {
+    reset();
+    return Error;
+  }
+
+  if (id >= kClipboardEnd) {
+    LOG_ERR("clipboard chunk invalid id: %d", id);
+    reset();
     return Error;
   }
 
   if (mark == ChunkType::DataStart) {
-    s_expectedSize = QString::fromStdString(data).toULong();
-    LOG_DEBUG("start receiving clipboard data");
-    dataCached.clear();
+    bool ok = false;
+    const auto expected = QString::fromStdString(data).toULongLong(&ok);
+    if (!ok || expected > std::numeric_limits<size_t>::max()) {
+      LOG_ERR("clipboard invalid size header: %s", data.c_str());
+      reset();
+      return Error;
+    }
+
+    clearCachedData(dataCached);
+    state.expectedSize = static_cast<size_t>(expected);
+    state.active = true;
+
+    if (isOversize()) {
+      LOG_WARN("not receiving clipboard data, exceeds limit, size: %zu, limit: %zu", state.expectedSize, maxDataSize);
+      return Oversize;
+    }
+
+    LOG_DEBUG("start receiving clipboard data, expected size=%zu", state.expectedSize);
     return Started;
   } else if (mark == ChunkType::DataChunk) {
+    if (!state.active) {
+      LOG_ERR("clipboard data chunk before start");
+      reset();
+      return Error;
+    }
+
+    // sender keeps streaming after an oversize start; drop silently, already logged at start
+    if (isOversize()) {
+      return Oversize;
+    }
+
+    if (wouldExceed(dataCached.size(), data.size(), state.expectedSize)) {
+      LOG_ERR(
+          "clipboard size exceeds declared, size: %zu, declared: %zu", dataCached.size() + data.size(),
+          state.expectedSize
+      );
+      reset();
+      return Error;
+    }
+
     dataCached.append(data);
     return TransferState::InProgress;
   } else if (mark == ChunkType::DataEnd) {
-    // validate
-    if (id >= kClipboardEnd) {
+    if (!state.active) {
+      LOG_ERR("clipboard end chunk before start");
+      reset();
       return Error;
-    } else if (s_expectedSize != dataCached.size()) {
-      LOG_ERR("corrupted clipboard data, expected size=%d actual size=%d", s_expectedSize, dataCached.size());
+    }
+
+    // end of an oversize transfer: nothing was cached, so skip the size check; already logged at start
+    if (isOversize()) {
+      reset();
+      return Oversize;
+    }
+
+    state.active = false;
+
+    if (state.expectedSize != dataCached.size()) {
+      LOG_ERR("corrupted clipboard data, expected size=%zu actual size=%zu", state.expectedSize, dataCached.size());
+      reset();
       return Error;
     }
     return Finished;
   }
 
-  LOG_ERR("clipboard transmission failed: unknown error");
+  LOG_ERR("unknown clipboard chunk mark");
+  reset();
   return Error;
 }
 
@@ -100,7 +175,7 @@ void ClipboardChunk::send(deskflow::IStream *stream, void *data)
 {
   const auto *clipboardData = static_cast<ClipboardChunk *>(data);
 
-  LOG_DEBUG1("sending clipboard chunk");
+  LOG_VERBOSE("sending clipboard chunk");
 
   const char *chunk = clipboardData->m_chunk;
   ClipboardID id = chunk[0];
@@ -111,15 +186,15 @@ void ClipboardChunk::send(deskflow::IStream *stream, void *data)
 
   switch (mark) {
   case ChunkType::DataStart:
-    LOG_DEBUG2("sending clipboard chunk start: size=%s", dataChunk.c_str());
+    LOG_VERBOSE("sending clipboard chunk start: size=%s", dataChunk.c_str());
     break;
 
   case ChunkType::DataChunk:
-    LOG_DEBUG2("sending clipboard chunk data: size=%i", dataChunk.size());
+    LOG_VERBOSE("sending clipboard chunk data: size=%i", dataChunk.size());
     break;
 
   case ChunkType::DataEnd:
-    LOG_DEBUG2("sending clipboard finished");
+    LOG_VERBOSE("sending clipboard finished");
     break;
 
   default:

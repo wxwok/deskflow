@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -14,7 +14,7 @@
 #include <QList>
 
 namespace deskflow {
-class Screen;
+class Computer;
 class ClientArgs;
 } // namespace deskflow
 
@@ -45,22 +45,22 @@ public:
   }
   int start() override;
   int runInner(StartupFunc startup) override;
-  deskflow::Screen *createScreen() override;
+  deskflow::Computer *createComputer() override;
   int mainLoop() override;
   void startNode() override;
 
   //
   // Regular functions
   //
-  deskflow::Screen *openClientScreen();
-  void closeClientScreen(deskflow::Screen *screen);
+  deskflow::Computer *openClientComputer();
+  void closeClientComputer(deskflow::Computer *computer);
   void handleClientRestart(const Event &, EventQueueTimer *vtimer);
   void scheduleClientRestart(double retryTime);
   void handleClientConnected();
   void handleClientFailed(const Event &e);
   void handleClientRefused(const Event &e);
   void handleClientDisconnected();
-  Client *openClient(const std::string &name, const NetworkAddress &address, deskflow::Screen *screen);
+  Client *openClient(const std::string &name, const NetworkAddress &address, deskflow::Computer *computer);
   void closeClient(Client *client);
   bool startClient();
   void stopClient();
@@ -78,6 +78,12 @@ public:
     return (ClientApp &)App::instance();
   }
 
+  /**
+   * @brief retryTime
+   * @return next retry time based on number of current retries
+   */
+  double retryTime() const;
+
 private:
   ISocketFactory *getSocketFactory() const;
   NetworkAddress &getCurrentServerAddress();
@@ -85,8 +91,9 @@ private:
 
   bool m_suspended = false;
   Client *m_client = nullptr;
-  deskflow::Screen *m_clientScreen = nullptr;
+  deskflow::Computer *m_clientComputer = nullptr;
   QList<NetworkAddress> m_serverAddresses;
   size_t m_currentServerIndex = 0;
   size_t m_lastServerAddressIndex = 0;
+  uint m_retryCount = 0;
 };

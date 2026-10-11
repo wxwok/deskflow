@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2024 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2024 Synergy App Ltd
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
 
@@ -8,7 +8,6 @@
 
 #include "Logger.h"
 
-#include "common/Enums.h"
 #include "common/Settings.h"
 #include "common/UrlConstants.h"
 #include "common/VersionInfo.h"
@@ -143,12 +142,11 @@ void showFirstServerStartMessage(QWidget *parent)
   );
 }
 
-void showFirstConnectedMessage(QWidget *parent, bool closeToTray, bool enableService, bool isServer)
+void showFirstConnectedMessage(QWidget *parent)
 {
-
   auto message = QObject::tr("<p>%1 is now connected!</p>").arg(kAppName);
 
-  if (isServer) {
+  if (Settings::value(Settings::Core::CoreMode).value<Settings::CoreMode>() == Settings::Server) {
     message.append(
         QObject::tr(
             "<p>Try moving your mouse to your other computer. Once there, go ahead "
@@ -160,7 +158,10 @@ void showFirstConnectedMessage(QWidget *parent, bool closeToTray, bool enableSer
     message.append(QObject::tr("<p>Try controlling this computer remotely.</p>"));
   }
 
-  if (!closeToTray && !enableService) {
+  using ProcessMode = Settings::ProcessMode;
+
+  if (Settings::value(Settings::Core::ProcessMode).value<ProcessMode>() == ProcessMode::Desktop &&
+      !Settings::value(Settings::Gui::CloseToTray).toBool()) {
     message.append(
         QObject::tr(
             "<p>As you do not have the setting enabled to keep %1 running in "
@@ -183,14 +184,17 @@ void showFirstConnectedMessage(QWidget *parent, bool closeToTray, bool enableSer
   QMessageBox::information(parent, title, message);
 }
 
-bool showNewClientPrompt(QWidget *parent, const QString &clientName, bool serverRequiresPeerAuth)
+bool showNewClientPrompt(QWidget *parent, const QString &clientName)
 {
-  if (serverRequiresPeerAuth) {
+  if (Settings::value(Settings::Security::TlsEnabled).toBool() &&
+      Settings::value(Settings::Security::CheckPeers).toBool()) {
     // When peer auth is enabled you will be prompted to allow the connection before seeing this dialog.
     // This is why we do not show a dialog with an option to ignore the new client
     QMessageBox::information(
         parent, QObject::tr("%1 - New Client").arg(kAppName),
-        QObject::tr("A new client called '%1' has been accepted. You'll need to add it to your server's screen layout.")
+        QObject::tr(
+            "A new client called '%1' has been accepted. You'll need to add it to your server's computer layout."
+        )
             .arg(clientName)
     );
     return true;
@@ -201,46 +205,6 @@ bool showNewClientPrompt(QWidget *parent, const QString &clientName, bool server
   message.setText(QObject::tr("A new client called '%1' wants to connect").arg(clientName));
   message.exec();
   return message.buttonRole(message.clickedButton()) == QMessageBox::AcceptRole;
-}
-
-bool showClearSettings(QWidget *parent)
-{
-  const auto title = QObject::tr("%1 Clear Settings").arg(kAppName);
-  const auto message = QObject::tr(
-                           "<p>Are you sure you want to clear all settings and restart %1?</p>"
-                           "<p>This action cannot be undone.</p>"
-  )
-                           .arg(kAppName);
-  return QMessageBox::question(parent, title, message) == QMessageBox::Yes;
-}
-
-void showReadOnlySettings(QWidget *parent, const QString &systemSettingsPath)
-{
-  const auto title = QObject::tr("%1 Read-only settings").arg(kAppName);
-  const auto message = QObject::tr(
-                           "<p>Settings are read-only because you only have read access "
-                           "to the file:</p><p>%1</p>"
-  )
-                           .arg(QDir::toNativeSeparators(systemSettingsPath));
-  QMessageBox::information(parent, title, message);
-}
-
-void showWaylandLibraryError(QWidget *parent)
-{
-  QMessageBox::critical(
-      parent, kAppName,
-      QObject::tr(
-          "<p>Sorry, while this version of %1 does support Wayland, "
-          "this build was not linked with one or more of the required "
-          "libraries.</p>"
-          "<p>Please either switch to X from your login screen or use a build "
-          "that uses the correct libraries.</p>"
-          "<p>If you think this is incorrect, please "
-          R"(<a href="%2">report a bug</a>.</p>)"
-          "<p>Please check the logs for more information.</p>"
-      )
-          .arg(kAppName, kUrlHelp)
-  );
 }
 
 bool showUpdateCheckOption(QWidget *parent)

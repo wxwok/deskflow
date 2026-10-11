@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2024 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2024 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2022 Red Hat, Inc.
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -8,7 +8,7 @@
 #pragma once
 
 #include "base/IEventQueueBuffer.h"
-#include "platform/EiScreen.h"
+#include "platform/EiComputer.h"
 
 #include <libei.h>
 #include <mutex>

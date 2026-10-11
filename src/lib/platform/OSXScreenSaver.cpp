@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -16,7 +16,7 @@
 
 // TODO: upgrade deprecated function usage in these functions.
 void getProcessSerialNumber(const char *name, ProcessSerialNumber &psn);
-bool isScreenSaverEngine(const ProcessSerialNumber &psn);
+bool isComputerSaverEngine(const ProcessSerialNumber &psn);
 
 //
 // OSXScreenSaver
@@ -87,9 +87,9 @@ bool OSXScreenSaver::isActive() const
 
 void OSXScreenSaver::processLaunched(ProcessSerialNumber psn)
 {
-  if (isScreenSaverEngine(psn)) {
+  if (isComputerSaverEngine(psn)) {
     m_screenSaverPSN = psn;
-    LOG_DEBUG1("screen saver engine launched, enabled=%d", m_enabled);
+    LOG_VERBOSE("computer saver engine launched, enabled=%d", m_enabled);
     if (m_enabled) {
       m_events->addEvent(Event(EventTypes::PrimaryScreenSaverActivated, m_eventTarget));
     }
@@ -99,7 +99,7 @@ void OSXScreenSaver::processLaunched(ProcessSerialNumber psn)
 void OSXScreenSaver::processTerminated(ProcessSerialNumber psn)
 {
   if (m_screenSaverPSN.highLongOfPSN == psn.highLongOfPSN && m_screenSaverPSN.lowLongOfPSN == psn.lowLongOfPSN) {
-    LOG_DEBUG1("screen saver engine terminated, enabled=%d", m_enabled);
+    LOG_VERBOSE("computer saver engine terminated, enabled=%d", m_enabled);
     if (m_enabled) {
       m_events->addEvent(Event(EventTypes::PrimaryScreenSaverDeactivated, m_eventTarget));
     }
@@ -159,7 +159,7 @@ void getProcessSerialNumber(const char *name, ProcessSerialNumber &psn)
   }
 }
 
-bool isScreenSaverEngine(const ProcessSerialNumber &psn)
+bool isComputerSaverEngine(const ProcessSerialNumber &psn)
 {
   CFStringRef processName = nullptr;
   OSStatus err = CopyProcessName(&psn, &processName);

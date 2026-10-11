@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -79,6 +79,11 @@ uint32_t StreamFilter::getSize() const
 deskflow::IStream *StreamFilter::getStream() const
 {
   return m_stream;
+}
+
+bool StreamFilter::adoptedStream() const
+{
+  return m_adopted;
 }
 
 void StreamFilter::filterEvent(const Event &event)

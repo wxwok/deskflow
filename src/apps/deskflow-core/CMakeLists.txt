@@ -36,6 +36,7 @@ target_link_libraries(
   platform
   server
   app
+  Qt6::Widgets
   ${libs})
 
 install(
@@ -49,9 +50,14 @@ if(BUILD_OSX_BUNDLE)
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "@loader_path/../Libraries;@loader_path/../Frameworks"
     RUNTIME_OUTPUT_DIRECTORY $<TARGET_BUNDLE_CONTENT_DIR:${CMAKE_PROJECT_PROPER_NAME}>/MacOS
+    XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES
   )
+  if (APPLE_CODESIGN_DEV)
+    configure_mac_codesign(${target})
+  endif()
 elseif (WIN32)
   install(RUNTIME_DEPENDENCY_SET coreDeps
+    ${WIN32_RUNTIME_DEPENDENCY_SET_ARGS}
     PRE_EXCLUDE_REGEXES ${WIN32_PRE_EXCLUDE_REGEXES}
     POST_EXCLUDE_REGEXES ${WIN32_POST_EXCLUDE_REGEXES}
     RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -77,17 +77,17 @@ void SettingsTests::checkValidSettings()
   }
 }
 
-void SettingsTests::checkCleanScreenName()
+void SettingsTests::checkCleanComputerName()
 {
-  const auto input = QStringLiteral("--!_ _-S@c#r$e%e^&*(n)= +Name\n[1]2|3?4--5>6<,7`~/8*90\\.lan--..    ..");
-  const auto expected = QStringLiteral("Screen_Name_1234--567890.lan");
+  const auto input = QStringLiteral("--!_ _-C@o#mpu$t%e^&*(r)= +Name\n[1]2|3?4--5>6<,7`~/8*90\\.lan--..    ..");
+  const auto expected = QStringLiteral("Computer_Name_1234--567890.lan");
 
   Settings::setValue(Settings::Core::ComputerName, input);
 
   QCOMPARE(Settings::value(Settings::Core::ComputerName).toString(), expected);
 }
 
-void SettingsTests::checkCleanScreenName_LongName()
+void SettingsTests::checkCleanComputerName_LongName()
 {
   QString input;
   input.fill('f', 300);
@@ -101,25 +101,14 @@ void SettingsTests::checkCleanScreenName_LongName()
   QCOMPARE(Settings::value(Settings::Core::ComputerName).toString(), expected);
 }
 
-void SettingsTests::checkLogLevels_Valid()
+void SettingsTests::checkClearState()
 {
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("Fatal")), 0);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("erRor")), 1);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("wArning")), 2);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("notE")), 3);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("info")), 4);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("deBug")), 5);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("debuG1")), 6);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("dEbug2")), 7);
-}
+  Settings::setValue(Settings::Gui::WindowGeometry, QRect(1, 2, 3, 4));
+  QVERIFY(Settings::value(Settings::Gui::WindowGeometry).toRect().isValid());
 
-void SettingsTests::checkLogLevels_Invalid()
-{
-  QCOMPARE(Settings::logLevelToInt(QString()), 4);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("INVALID")), 4);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("debug3")), 4);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("infomatic")), 4);
-  QCOMPARE(Settings::logLevelToInt(QStringLiteral("warn")), 4);
+  Settings::clearState();
+
+  QVERIFY(!Settings::value(Settings::Gui::WindowGeometry).toRect().isValid());
 }
 
 QTEST_MAIN(SettingsTests)

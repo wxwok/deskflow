@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -29,7 +29,7 @@ public:
   /*!
   Sets the state of \p button to down or up and updates the current
   modifier state to \p newState.  This method should be called by
-  primary screens only in response to local events.  For auto-repeat
+  primary computers only in response to local events.  For auto-repeat
   set \p down to \c true.  Overrides must forward to the superclass.
   */
   virtual void onKey(KeyButton button, bool down, KeyModifierMask newState);

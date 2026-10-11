@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016, 2025 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016, 2025 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2012 Nick Bolton
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -15,13 +15,11 @@
 #include "common/VersionInfo.h"
 #include "deskflow/ipc/DaemonIpcServer.h"
 
-#if SYSAPI_WIN32
-
+#if defined(Q_OS_WIN)
 #include "arch/win32/ArchMiscWindows.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-
 #endif
 
 #include <QCommandLineParser>
@@ -34,12 +32,15 @@ void handleError(const char *message = "Unrecognized error.");
 
 int main(int argc, char **argv)
 {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   ArchMiscWindows::guardRuntimeVersion();
 
   // Save window instance for later use, e.g. `GetModuleFileName` which is used when installing the daemon.
   ArchMiscWindows::setInstanceWin32(GetModuleHandle(nullptr));
 #endif
+
+  QCoreApplication::setApplicationName(QStringLiteral("%1 Daemon").arg(kAppName));
+  QCoreApplication app(argc, argv);
 
   Arch arch;
   arch.init();
@@ -49,9 +50,6 @@ int main(int argc, char **argv)
 
   // Daemon deliberately does not have a parent, as it will be moved to a new thread.
   DaemonApp daemon(events);
-
-  QCoreApplication app(argc, argv);
-  QCoreApplication::setApplicationName(QStringLiteral("%1 Daemon").arg(kAppName));
 
   QCommandLineParser parser;
   parser.addHelpOption();
@@ -75,6 +73,7 @@ int main(int argc, char **argv)
   // It's important to write the version number to the log file so we can be certain the old daemon
   // was uninstalled, since sometimes Windows services can get stuck and fail to be removed.
   LOG_PRINT("%s v%s", qPrintable(QCoreApplication::applicationName()), kDisplayVersion);
+  LOG_INFO("settings file: %s", qPrintable(Settings::settingsFile()));
 
   // Default log level to system setting (found in Registry).
   auto logLevel = Settings::value(Settings::Daemon::LogLevel).toString().toStdString();
@@ -85,7 +84,7 @@ int main(int argc, char **argv)
 
   try {
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
     // Show warning if not running as admin as daemon will behave differently.
     if (!ArchMiscWindows::isProcessElevated()) {
       LOG_WARN("not running as admin, some features may not work");
@@ -115,8 +114,7 @@ int main(int argc, char **argv)
   }
 }
 
-#if SYSAPI_WIN32
-
+#if defined(Q_OS_WIN)
 // Win32 subsystem entry point (simply forwards to main).
 // We need this because using regular main under the Win32 subsystem results in empty args.
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
@@ -131,7 +129,7 @@ void handleError(const char *message)
   // Always print error to stdout in case run as CLI program.
   LOG_ERR("%s", message);
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   // Show a message box for when run from MSI in Win32 subsystem.
   MessageBoxA(nullptr, message, "Deskflow daemon error", MB_OK | MB_ICONERROR);
 #endif

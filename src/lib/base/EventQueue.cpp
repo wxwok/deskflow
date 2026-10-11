@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 - 2026 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -12,10 +12,15 @@
 #include "base/EventQueueTimer.h"
 #include "base/Log.h"
 #include "base/SimpleEventQueueBuffer.h"
+#include "common/ExitCodes.h"
 #include "mt/Lock.h"
 #include "mt/Mutex.h"
 
 #include <stdexcept>
+
+#if defined(__APPLE__)
+#include "base/OSXAutoReleasePool.h"
+#endif
 
 // interrupt handler.  this just adds a quit event to the queue.
 static void interrupt(Arch::ThreadSignal, void *data)
@@ -44,7 +49,7 @@ EventQueue::~EventQueue()
   ARCH->setSignalHandler(Arch::ThreadSignal::Terminate, nullptr, nullptr);
 }
 
-void EventQueue::loop()
+int EventQueue::loop()
 {
   m_buffer->init();
   {
@@ -67,6 +72,11 @@ void EventQueue::loop()
     Event::deleteData(event);
     getEvent(event);
   }
+  int exitCode = s_exitSuccess;
+  if (auto *exitEvent = dynamic_cast<ExitEventData *>(event.getDataObject()); exitEvent != nullptr) {
+    exitCode = exitEvent->exitCode();
+  }
+  return exitCode;
 }
 
 void EventQueue::adoptBuffer(IEventQueueBuffer *buffer)
@@ -160,16 +170,23 @@ bool EventQueue::getEvent(Event &event, double timeout)
 
 bool EventQueue::dispatchEvent(const Event &event)
 {
-  void *target = event.getTarget();
-  if (const auto *type_handler = getHandler(event.getType(), target); type_handler) {
-    (*type_handler)(event);
-    return true;
-  }
-  if (const auto *any_handler = getHandler(EventTypes::Unknown, target); any_handler) {
-    (*any_handler)(event);
-    return true;
-  }
-  return false;
+#if defined(__APPLE__)
+  auto dispatch = [&] {
+#endif
+    void *target = event.getTarget();
+    if (auto typeHandler = getHandler(event.getType(), target); typeHandler.has_value()) {
+      (*typeHandler)(event);
+      return true;
+    }
+    if (auto anyHandler = getHandler(EventTypes::Unknown, target); anyHandler.has_value()) {
+      (*anyHandler)(event);
+      return true;
+    }
+    return false;
+#if defined(__APPLE__)
+  };
+  return deskflow::runInAutoReleasePool(dispatch);
+#endif
 }
 
 void EventQueue::addEvent(Event &&event)
@@ -289,17 +306,17 @@ void EventQueue::removeHandlers(void *target)
   }
 }
 
-const EventQueue::EventHandler *EventQueue::getHandler(EventTypes type, void *target) const
+std::optional<EventQueue::EventHandler> EventQueue::getHandler(EventTypes type, void *target) const
 {
   std::scoped_lock lock{m_mutex};
   if (HandlerTable::const_iterator index = m_handlers.find(target); index != m_handlers.end()) {
     const TypeHandlerTable &typeHandlers = index->second;
     TypeHandlerTable::const_iterator index2 = typeHandlers.find(type);
     if (index2 != typeHandlers.end()) {
-      return &index2->second;
+      return index2->second;
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
 uint32_t EventQueue::saveEvent(Event &&event)

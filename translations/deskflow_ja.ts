@@ -134,10 +134,6 @@ p, li { white-space: pre-wrap; }
         <source>Switch to %1</source>
         <translation>%1 に切り替える</translation>
     </message>
-    <message>
-        <source>Switch to </source>
-        <translation>に切り替える</translation>
-    </message>
 </context>
 <context>
     <name>ClientConfigDialog</name>
@@ -170,20 +166,170 @@ p, li { white-space: pre-wrap; }
         <translation>倍率</translation>
     </message>
     <message>
-        <source>Close and save changes</source>
-        <translation>変更を保存して閉じる</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Allow the client to slow the rate it attempts to reconnect to the server when connections attempts are failing. The delay between connection attempts will  start at 1 second intervals and can be a maxium of 5 minutes between connection attempts.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;接続試行が失敗し続けている場合に、クライアントがサーバーへ再接続を試みる頻度を徐々に下げます。接続試行の間隔は当初1秒から開始され、最大で5分まで延長されます。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <source>Close and forget changes</source>
-        <translation>変更を破棄して閉じる</translation>
+        <source>Use dynamic reconnection time based on connection attempts</source>
+        <translation>接続試行回数に基づき、再接続時間を動的に調整する</translation>
+    </message>
+</context>
+<context>
+    <name>ComputerSettingsDialog</name>
+    <message>
+        <source>Computer settings</source>
+        <translation type="unfinished">コンピューター設定</translation>
     </message>
     <message>
-        <source>Reset to stored values</source>
-        <translation>変更前の値にリセットする</translation>
+        <source>Computer Info</source>
+        <translation type="unfinished">コンピューター情報</translation>
     </message>
     <message>
-        <source>Reset to default values</source>
-        <translation>デフォルト値にリセットする</translation>
+        <source>Name</source>
+        <translation type="unfinished">名前</translation>
+    </message>
+    <message>
+        <source>Modifier Keys</source>
+        <translation type="unfinished">修飾キー</translation>
+    </message>
+    <message>
+        <source>M&amp;eta</source>
+        <translation type="unfinished">M&amp;eta</translation>
+    </message>
+    <message>
+        <source>&amp;Ctrl</source>
+        <translation type="unfinished">&amp;Ctrl</translation>
+    </message>
+    <message>
+        <source>S&amp;uper</source>
+        <translation type="unfinished">S&amp;uper</translation>
+    </message>
+    <message>
+        <source>Al&amp;t</source>
+        <translation type="unfinished">Al&amp;t</translation>
+    </message>
+    <message>
+        <source>Shift</source>
+        <translation type="unfinished">Shift</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation type="unfinished">Ctrl</translation>
+    </message>
+    <message>
+        <source>Alt</source>
+        <translation type="unfinished">Alt</translation>
+    </message>
+    <message>
+        <source>Meta</source>
+        <translation type="unfinished">Meta</translation>
+    </message>
+    <message>
+        <source>Super</source>
+        <translation type="unfinished">Super</translation>
+    </message>
+    <message>
+        <source>Alt Gr</source>
+        <translation type="unfinished">Alt Gr</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished">なし</translation>
+    </message>
+    <message>
+        <source>&amp;Shift</source>
+        <translation type="unfinished">&amp;Shift</translation>
+    </message>
+    <message>
+        <source>Alt &amp;Gr</source>
+        <translation type="unfinished">Alt &amp;Gr</translation>
+    </message>
+    <message>
+        <source>Dead Corners</source>
+        <translation type="unfinished">無効領域</translation>
+    </message>
+    <message>
+        <source>Top Left</source>
+        <translation type="unfinished">左上</translation>
+    </message>
+    <message>
+        <source>Top Right</source>
+        <translation type="unfinished">右上</translation>
+    </message>
+    <message>
+        <source>Corner si&amp;ze</source>
+        <translation type="unfinished">大きさ(&amp;Z)</translation>
+    </message>
+    <message>
+        <source>Bottom Left</source>
+        <translation type="unfinished">左下</translation>
+    </message>
+    <message>
+        <source>Bottom Right</source>
+        <translation type="unfinished">右下</translation>
+    </message>
+    <message>
+        <source>Fixes</source>
+        <translation type="unfinished">修正</translation>
+    </message>
+    <message>
+        <source>SCROLL LOCK key</source>
+        <translation type="unfinished">SCROLL LOCK キー</translation>
+    </message>
+    <message>
+        <source>CAPS LOCK key</source>
+        <translation type="unfinished">CAPS LOCK キー</translation>
+    </message>
+    <message>
+        <source>NUM LOCK key</source>
+        <translation type="unfinished">NUM LOCK キー</translation>
+    </message>
+    <message>
+        <source>XTest for Xinerama</source>
+        <translation type="unfinished">Xinerama での XTest</translation>
+    </message>
+    <message>
+        <source>X11 computers Only, When enabled the client will not give focus to its focused window as soon as the client is switched to. This can help prevent unwanted focus stealing with some X11 setups.</source>
+        <translation type="unfinished">X11環境でのみ有効です。この設定を有効にすると、クライアントに切り替えた際、そのクライアント内のウィンドウに即座にフォーカスが移らなくなります。これにより、一部のX11環境で発生しがちな、意図しないフォーカスの横取り（フォーカス・スティーリング）を防ぐことができます。</translation>
+    </message>
+    <message>
+        <source>Weaken X11 Focus</source>
+        <translation type="unfinished">X11のフォーカスを弱める</translation>
+    </message>
+    <message>
+        <source>Aliases</source>
+        <translation type="unfinished">別名</translation>
+    </message>
+    <message>
+        <source>&amp;Add</source>
+        <translation type="unfinished">追加(&amp;A)</translation>
+    </message>
+    <message>
+        <source>&amp;Remove</source>
+        <translation type="unfinished">削除(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Computer name is empty</source>
+        <translation type="unfinished">コンピューター名が空です</translation>
+    </message>
+    <message>
+        <source>The computer name cannot be empty. Please either fill in a name or cancel the dialog.</source>
+        <translation type="unfinished">コンピューター名を空にすることはできません。名前を入力するか、ダイアログをキャンセルしてください。</translation>
+    </message>
+    <message>
+        <source>Computer name matches alias</source>
+        <translation type="unfinished">コンピューター名がエイリアスと一致しています</translation>
+    </message>
+    <message>
+        <source>The computer name cannot be the same as an alias. Please either remove the alias or change the computer name.</source>
+        <translation type="unfinished">コンピューター名をエイリアスと同じにすることはできません。エイリアスを削除するか、コンピューター名を変更してください。</translation>
+    </message>
+</context>
+<context>
+    <name>ComputerSetupModel</name>
+    <message>
+        <source>&lt;center&gt;Computer: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Double click to edit settings&lt;br&gt;Drag computer to the trashcan to remove it</source>
+        <translation type="unfinished">&lt;center&gt;コンピュータ: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;ダブルクリックして設定を編集&lt;br&gt;コンピュータをゴミ箱にドラッグして削除</translation>
     </message>
 </context>
 <context>
@@ -267,6 +413,17 @@ Do you want to connect to the server?
     </message>
 </context>
 <context>
+    <name>HelpDialog</name>
+    <message>
+        <source>%1 Help</source>
+        <translation>%1 ヘルプ</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>閉じる</translation>
+    </message>
+</context>
+<context>
     <name>HotkeyDialog</name>
     <message>
         <source>Hotkey</source>
@@ -294,6 +451,33 @@ Do you want to connect to the server?
     <message>
         <source>Attach to window</source>
         <translation>ウィンドウに結合</translation>
+    </message>
+</context>
+<context>
+    <name>LogLevel</name>
+    <message>
+        <source>Fatal</source>
+        <translation>重大</translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation>エラー</translation>
+    </message>
+    <message>
+        <source>Warning</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <source>Info</source>
+        <translation>情報</translation>
+    </message>
+    <message>
+        <source>Debug</source>
+        <translation>デバッグ</translation>
+    </message>
+    <message>
+        <source>Verbose</source>
+        <translation>冗長</translation>
     </message>
 </context>
 <context>
@@ -359,10 +543,6 @@ Do you want to connect to the server?
         <translation>他のコンピューターのIPアドレスかホスト名を入力してください。</translation>
     </message>
     <message>
-        <source>Core cannot be started</source>
-        <translation>コアが起動できません</translation>
-    </message>
-    <message>
         <source>Save server configuration as...</source>
         <translation>サーバー設定を保存…</translation>
     </message>
@@ -393,6 +573,18 @@ Do you want to connect to the server?
     <message>
         <source>&lt;p&gt;Failed to connect to the server &apos;%1&apos;.&lt;/p&gt;&lt;p&gt;A Client with your name is already connected to the server.&lt;/p&gt;Please ensure that you&apos;re using a unique name and that only a single instance of the client process is running.&lt;/p&gt;</source>
         <translation>&lt;p&gt;サーバー &apos;%1&apos; への接続に失敗しました。&lt;/p&gt;&lt;p&gt;同じ名前のクライアントがサーバーに接続済です。&lt;/p&gt;&lt;p&gt;名前の重複がないことと、クライアントプロセスが多重起動していない事を確認してください。&lt;/p&gt;</translation>
+    </message>
+    <message>
+        <source>View &amp;Help</source>
+        <translation>ヘルプを表示(&amp;H)</translation>
+    </message>
+    <message>
+        <source>Invalid Computer Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer name already exists</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No IP Detected</source>
@@ -441,14 +633,6 @@ A bound IP is now invalid, you may need to restart the server.</source>
         <translation>ヘルプ(&amp;H)</translation>
     </message>
     <message>
-        <source>Clear settings</source>
-        <translation>設定を消去</translation>
-    </message>
-    <message>
-        <source>Report a Bug</source>
-        <translation>バグレポート</translation>
-    </message>
-    <message>
         <source>&amp;Minimize to tray</source>
         <translation>トレイに最小化(&amp;M)</translation>
     </message>
@@ -494,14 +678,6 @@ A bound IP is now invalid, you may need to restart the server.</source>
         <translation>Ctrl+Q</translation>
     </message>
     <message>
-        <source>Invalid Screen Name</source>
-        <translation>不正なコンピューター名</translation>
-    </message>
-    <message>
-        <source>Screen name already exists</source>
-        <translation>コンピューター名の重複</translation>
-    </message>
-    <message>
         <source>The name you have chosen is invalid.
 
 Valid names:
@@ -524,10 +700,6 @@ Valid names:
         <translation>推奨IPアドレス: </translation>
     </message>
     <message>
-        <source>The Core executable could not be successfully started, although it does exist. Please check if you have sufficient permissions to run this program.</source>
-        <translation>コア実行ファイルは存在していますが、起動できませんでした。このプログラムを実行するのに十分な権限があることを確認してください。</translation>
-    </message>
-    <message>
         <source>&amp;Configure Client</source>
         <translation>クライアント設定 (&amp;C)</translation>
     </message>
@@ -539,13 +711,45 @@ Valid names:
         <source>&lt;html&gt;Hostname or IP address of the server computer.&lt;br/&gt;May contain a comma seperated list.&lt;/html&gt;</source>
         <translation>&lt;html&gt;サーバーコンピューターのホスト名または IP アドレス。&lt;br/&gt;カンマ区切りのリストを含めることができます。&lt;/html&gt;</translation>
     </message>
+    <message>
+        <source>read</source>
+        <translation>読み取り</translation>
+    </message>
+    <message>
+        <source>read and write</source>
+        <translation>書き込み</translation>
+    </message>
+    <message>
+        <source>The Core executable could not be started.
+Please check if you have sufficient permissions to run %1.</source>
+        <translation>Coreの実行ファイルを起動できませんでした。
+%1を実行するための十分な権限があるか確認してください。</translation>
+    </message>
+    <message>
+        <source>
+Additionally, check you are able to %1 the server config file: %2</source>
+        <translation>
+また、サーバー設定ファイルへの%1権限があることを確認してください: %2</translation>
+    </message>
+    <message>
+        <source>Don&apos;t show this again</source>
+        <translation>再表示しない</translation>
+    </message>
+    <message>
+        <source>Missing Keyboard Layouts</source>
+        <translation>キーボードレイアウトの不足</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Keyboard layout support requires matching layouts on all computers. The following layouts from the other computer are not installed on this computer:&lt;/p&gt;&lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;Please install them to enable support for these layouts.&lt;/p&gt;</source>
+        <translation>&lt;p&gt;キーボードレイアウトのサポートには対応するレイアウトが全てのコンピューターに必要です。別のコンピューターで使用されている以下のレイアウトがこのコンピューターにインストールされていません:&lt;/p&gt;&lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;サポートを有効にするには、これらのレイアウトをインストールしてください。&lt;/p&gt;</translation>
+    </message>
 </context>
 <context>
-    <name>NewScreenWidget</name>
+    <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
         <extracomment>Used as the hostname. Translation may not contain spaces</extracomment>
-        <translation>Unnamed</translation>
+        <translation type="unfinished">Unnamed</translation>
     </message>
 </context>
 <context>
@@ -625,8 +829,8 @@ Valid names:
         <translation>%1 - 新しいクライアント</translation>
     </message>
     <message>
-        <source>A new client called &apos;%1&apos; has been accepted. You&apos;ll need to add it to your server&apos;s screen layout.</source>
-        <translation>新しいクライアント &apos;%1&apos; が接続許可されました。サーバーのコンピューター配置に追加してください。</translation>
+        <source>A new client called &apos;%1&apos; has been accepted. You&apos;ll need to add it to your server&apos;s computer layout.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Ignore</source>
@@ -639,26 +843,6 @@ Valid names:
     <message>
         <source>A new client called &apos;%1&apos; wants to connect</source>
         <translation>新しいクライアント &apos;%1&apos; が接続を求めています</translation>
-    </message>
-    <message>
-        <source>%1 Clear Settings</source>
-        <translation>%1 設定消去</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Are you sure you want to clear all settings and restart %1?&lt;/p&gt;&lt;p&gt;This action cannot be undone.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;全ての設定を消去して %1 を再起動しますか？&lt;/p&gt;&lt;p&gt;この操作は取り消せません。&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>%1 Read-only settings</source>
-        <translation>%1 読み取り専用設定</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Settings are read-only because you only have read access to the file:&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;</source>
-        <translation>&lt;p&gt;以下のファイルへの書き込み権限がないため、設定は読み取り専用です:&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Sorry, while this version of %1 does support Wayland, this build was not linked with one or more of the required libraries.&lt;/p&gt;&lt;p&gt;Please either switch to X from your login screen or use a build that uses the correct libraries.&lt;/p&gt;&lt;p&gt;If you think this is incorrect, please &lt;a href=&quot;%2&quot;&gt;report a bug&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;Please check the logs for more information.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;申し訳ありません、このバージョンの %1 は Wayland に対応していますが、このビルドには必要なライブラリがリンクされていません。&lt;/p&gt;&lt;p&gt;ログイン画面から X に切り替えるか、正しいライブラリをリンクしたビルドを使用してください。&lt;/p&gt;&lt;p&gt;もしこの説明が正しくないと思われる場合は、&lt;a href=&quot;%2&quot;&gt;バグレポート&lt;/a&gt;してください。&lt;/p&gt;&lt;p&gt;詳細はログを確認してください。&lt;/p&gt;</translation>
     </message>
     <message>
         <source>No thanks</source>
@@ -711,147 +895,33 @@ Valid names:
         <source>%1 is already running</source>
         <translation>%1 は既に起動中です</translation>
     </message>
-</context>
-<context>
-    <name>ScreenSettingsDialog</name>
     <message>
-        <source>Computer settings</source>
-        <translation>コンピューター設定</translation>
+        <source>Alt</source>
+        <translation type="unfinished">Alt</translation>
     </message>
     <message>
-        <source>Computer Info</source>
-        <translation>コンピューター情報</translation>
-    </message>
-    <message>
-        <source>Name</source>
-        <translation>名前</translation>
-    </message>
-    <message>
-        <source>Modifier Keys</source>
-        <translation>修飾キー</translation>
-    </message>
-    <message>
-        <source>M&amp;eta</source>
-        <translation>M&amp;eta</translation>
-    </message>
-    <message>
-        <source>&amp;Ctrl</source>
-        <translation>&amp;Ctrl</translation>
-    </message>
-    <message>
-        <source>S&amp;uper</source>
-        <translation>S&amp;uper</translation>
-    </message>
-    <message>
-        <source>Al&amp;t</source>
-        <translation>Al&amp;t</translation>
-    </message>
-    <message>
-        <source>Shift</source>
-        <translation>Shift</translation>
+        <source>AltGr</source>
+        <translation type="unfinished">AltGr</translation>
     </message>
     <message>
         <source>Ctrl</source>
-        <translation>Ctrl</translation>
-    </message>
-    <message>
-        <source>Alt</source>
-        <translation>Alt</translation>
+        <translation type="unfinished">Ctrl</translation>
     </message>
     <message>
         <source>Meta</source>
-        <translation>Meta</translation>
-    </message>
-    <message>
-        <source>Super</source>
-        <translation>Super</translation>
+        <translation type="unfinished">Meta</translation>
     </message>
     <message>
         <source>None</source>
-        <translation>なし</translation>
+        <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <source>&amp;Shift</source>
-        <translation>&amp;Shift</translation>
+        <source>Shift</source>
+        <translation type="unfinished">Shift</translation>
     </message>
     <message>
-        <source>Dead Corners</source>
-        <translation>無効領域</translation>
-    </message>
-    <message>
-        <source>Top Left</source>
-        <translation>左上</translation>
-    </message>
-    <message>
-        <source>Top Right</source>
-        <translation>右上</translation>
-    </message>
-    <message>
-        <source>Corner si&amp;ze</source>
-        <translation>大きさ(&amp;Z)</translation>
-    </message>
-    <message>
-        <source>Bottom Left</source>
-        <translation>左下</translation>
-    </message>
-    <message>
-        <source>Bottom Right</source>
-        <translation>右下</translation>
-    </message>
-    <message>
-        <source>Fixes</source>
-        <translation>修正</translation>
-    </message>
-    <message>
-        <source>SCROLL LOCK key</source>
-        <translation>SCROLL LOCK キー</translation>
-    </message>
-    <message>
-        <source>CAPS LOCK key</source>
-        <translation>CAPS LOCK キー</translation>
-    </message>
-    <message>
-        <source>NUM LOCK key</source>
-        <translation>NUM LOCK キー</translation>
-    </message>
-    <message>
-        <source>XTest for Xinerama</source>
-        <translation>Xinerama での XTest</translation>
-    </message>
-    <message>
-        <source>Aliases</source>
-        <translation>別名</translation>
-    </message>
-    <message>
-        <source>&amp;Add</source>
-        <translation>追加(&amp;A)</translation>
-    </message>
-    <message>
-        <source>&amp;Remove</source>
-        <translation>削除(&amp;R)</translation>
-    </message>
-    <message>
-        <source>Screen name is empty</source>
-        <translation>空のコンピューター名</translation>
-    </message>
-    <message>
-        <source>The screen name cannot be empty. Please either fill in a name or cancel the dialog.</source>
-        <translation>コンピューター名を空にすることはできません。なにか名前を入力するか、ダイアログをキャンセルしてください。</translation>
-    </message>
-    <message>
-        <source>Screen name matches alias</source>
-        <translation>コンピューター名と別名の重複</translation>
-    </message>
-    <message>
-        <source>The screen name cannot be the same as an alias. Please either remove the alias or change the screen name.</source>
-        <translation>コンピューター名は別名と同じにできません。別名を削除するか、コンピューター名を変更してください。</translation>
-    </message>
-</context>
-<context>
-    <name>ScreenSetupModel</name>
-    <message>
-        <source>&lt;center&gt;Screen: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Double click to edit settings&lt;br&gt;Drag screen to the trashcan to remove it</source>
-        <translation>&lt;center&gt;コンピューター: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;ダブルクリックで設定&lt;br&gt;ゴミ箱にドラッグして削除</translation>
+        <source>Super</source>
+        <translation type="unfinished">Super</translation>
     </message>
 </context>
 <context>
@@ -936,34 +1006,6 @@ Valid names:
         <translation>詳細設定</translation>
     </message>
     <message>
-        <source>&amp;Dead corners (for this computer)</source>
-        <translation>無効領域(&amp;D) (このコンピューター)</translation>
-    </message>
-    <message>
-        <source>&amp;Bottom-left</source>
-        <translation>左下(&amp;B)</translation>
-    </message>
-    <message>
-        <source>To&amp;p-left</source>
-        <translation>左上(&amp;P)</translation>
-    </message>
-    <message>
-        <source>Bottom-ri&amp;ght</source>
-        <translation>右下(&amp;G)</translation>
-    </message>
-    <message>
-        <source>Top-rig&amp;ht</source>
-        <translation>右上(&amp;H)</translation>
-    </message>
-    <message>
-        <source>Cor&amp;ner size</source>
-        <translation>大きさ(&amp;N)</translation>
-    </message>
-    <message>
-        <source>px</source>
-        <translation>ピクセル</translation>
-    </message>
-    <message>
         <source>&amp;Misc</source>
         <translation>その他(&amp;M)</translation>
     </message>
@@ -1028,14 +1070,6 @@ Valid names:
         <translation>指定時間内に画面端ダブルタップで移動(&amp;T)</translation>
     </message>
     <message>
-        <source>Config file</source>
-        <translation>設定ファイル</translation>
-    </message>
-    <message>
-        <source>Core server config file</source>
-        <translation>Coreサーバー設定ファイル</translation>
-    </message>
-    <message>
         <source>Use a server config file to create complex computer layouts that are not possible with the simple grid-based computer layout editor.
 
 Enabling this setting will disable the server config GUI.</source>
@@ -1076,16 +1110,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>起動時にソフトウェア更新を確認する</translation>
     </message>
     <message>
-        <source>Hide the window when the app starts</source>
-        <translation>アプリの起動時にウィンドウを隠す</translation>
-    </message>
-    <message>
         <source>Prevent this computer from going to sleep</source>
         <translation>このコンピューターがスリープしないようにする</translation>
-    </message>
-    <message>
-        <source>Leave app running in notification area when the window is closed</source>
-        <translation>ウィンドウを閉じてもアプリを通知領域で実行し続ける</translation>
     </message>
     <message>
         <source>Tray icon style</source>
@@ -1136,44 +1162,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>レベル</translation>
     </message>
     <message>
-        <source>Fatal</source>
-        <translation>重大</translation>
-    </message>
-    <message>
-        <source>Error</source>
-        <translation>エラー</translation>
-    </message>
-    <message>
-        <source>Warning</source>
-        <translation>警告</translation>
-    </message>
-    <message>
-        <source>Note</source>
-        <translation>通知</translation>
-    </message>
-    <message>
-        <source>Info</source>
-        <translation>情報</translation>
-    </message>
-    <message>
-        <source>Debug</source>
-        <translation>デバッグ</translation>
-    </message>
-    <message>
-        <source>Debug1</source>
-        <translation>デバッグ1</translation>
-    </message>
-    <message>
-        <source>Debug2</source>
-        <translation>デバッグ2</translation>
-    </message>
-    <message>
         <source>Log path</source>
         <translation>ログファイルのパス</translation>
-    </message>
-    <message>
-        <source>Using a Debug log level may affect performance. Only use a Debug level if you are attempting to debug an issue or are gathering logs to submit with a bug report.</source>
-        <translation>デバッグレベルのログ取得は性能に影響が出ることがあります。不具合の修正やバグレポートの送信に必要な場合にのみ使用してください。</translation>
     </message>
     <message>
         <source>Enable GUI debug messages</source>
@@ -1186,10 +1176,6 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>Always run as system (work at login screen and UAC)</source>
         <translation>常にsystem権限で実行する(ログイン画面とUACで必要)</translation>
-    </message>
-    <message>
-        <source>Force a language to be used for the GUI.</source>
-        <translation>GUIの使用言語を設定します。</translation>
     </message>
     <message>
         <source>Language</source>
@@ -1212,6 +1198,14 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>ログをファイルに保存…</translation>
     </message>
     <message>
+        <source>%1 Clear Settings</source>
+        <translation>%1 設定消去</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Are you sure you want to clear all settings and restart %1?&lt;/p&gt; &lt;p&gt;This action cannot be undone.&lt;/p&gt;</source>
+        <translation>&lt;p&gt;すべての設定を消去して %1 を再起動してもよろしいですか？&lt;/p&gt; &lt;p&gt;この操作は元に戻せません。&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>Required messages</source>
         <translation>必須のメッセージ</translation>
     </message>
@@ -1224,10 +1218,6 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>一般的な警告</translation>
     </message>
     <message>
-        <source>Notable events</source>
-        <translation>特筆すべき事象</translation>
-    </message>
-    <message>
         <source>General events [Default]</source>
         <translation>一般的な事象 [既定]</translation>
     </message>
@@ -1236,36 +1226,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>デバッグ情報</translation>
     </message>
     <message>
-        <source>More debug output</source>
-        <translation>より多くのデバッグ出力</translation>
-    </message>
-    <message>
         <source>Verbose debug output</source>
         <translation>詳細なデバッグ出力</translation>
-    </message>
-    <message>
-        <source>Close and save changes</source>
-        <translation>変更を保存して閉じる</translation>
-    </message>
-    <message>
-        <source>Close and forget changes</source>
-        <translation>変更を破棄して閉じる</translation>
-    </message>
-    <message>
-        <source>Reset to stored values</source>
-        <translation>変更前の値にリセットする</translation>
-    </message>
-    <message>
-        <source>Reset to default values</source>
-        <translation>デフォルト値にリセットする</translation>
-    </message>
-    <message>
-        <source>Enable wl-clipboard support</source>
-        <translation>wl-clipboard によるクリップボード対応を有効にする</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Requires the wl-clipboard package&lt;/p&gt;&lt;p&gt;When using wl-clipboard v2.2.1, there is a focus stealing bug that may make Deskflow harder to use. This has been fixed when using the wl-clipboard master branch, unless your Compositor lacks wlroots-data-control protocol support.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;wl-clipboard パッケージが必要です。&lt;/p&gt;&lt;p&gt;wl-clipboard v2.2.1 を使用すると、フォーカス盗用のバグにより Deskflow の使い勝手が悪くなる可能性があります。この問題は wl-clipboard のマスターブランチで修正されていますが、使用しているコンポジターが wlroots-data-control プロトコルに対応している必要があります。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Automatic</source>
@@ -1291,6 +1253,73 @@ Enabling this setting will disable the server config GUI.</source>
         <source>&amp;Network</source>
         <translation>ネットワーク(&amp;N)</translation>
     </message>
+    <message>
+        <source>&amp;Window</source>
+        <translation>ウィンドウ(&amp;W)</translation>
+    </message>
+    <message>
+        <source>When the main window is closed</source>
+        <translation>メインウィンドウを閉じたとき</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation>アプリケーションを終了する</translation>
+    </message>
+    <message>
+        <source>Send to background</source>
+        <translation>バックグラウンドで実行する</translation>
+    </message>
+    <message>
+        <source>When the application starts</source>
+        <translation>アプリケーション起動時</translation>
+    </message>
+    <message>
+        <source>Show the main window</source>
+        <translation>メインウィンドウを表示する</translation>
+    </message>
+    <message>
+        <source>Run command on enter</source>
+        <translation>画面に入る時にコマンドを実行</translation>
+    </message>
+    <message>
+        <source>Run command on exit</source>
+        <translation>画面から出る時にコマンドを実行</translation>
+    </message>
+    <message>
+        <source>Using a log level higher than Info may affect performance.</source>
+        <translation>Infoよりも高いログレベルを使用すると、パフォーマンスに影響を及ぼす可能性があります。</translation>
+    </message>
+    <message>
+        <source>Remove all settings</source>
+        <translation>すべての設定を消去する</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialogButtonBox</name>
+    <message>
+        <source>Settings are read only</source>
+        <translation>設定は読み取り専用です</translation>
+    </message>
+    <message>
+        <source>%1 is not writable</source>
+        <translation>%1 は書き込み可能ではありません</translation>
+    </message>
+    <message>
+        <source>Close and save changes</source>
+        <translation>変更を保存して閉じる</translation>
+    </message>
+    <message>
+        <source>Close and forget changes</source>
+        <translation>変更を破棄して閉じる</translation>
+    </message>
+    <message>
+        <source>Reset to stored values</source>
+        <translation>変更前の値にリセットする</translation>
+    </message>
+    <message>
+        <source>Reset to default values</source>
+        <translation>デフォルト値にリセットする</translation>
+    </message>
 </context>
 <context>
     <name>StatusBar</name>
@@ -1313,10 +1342,6 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>%1 is waiting for clients</source>
         <translation>%1 はクライアント接続を待機中</translation>
-    </message>
-    <message>
-        <source>%1 is connecting...</source>
-        <translation>%1 は接続処理中…</translation>
     </message>
     <message>
         <source>%1 is connected as client of %2</source>
@@ -1352,6 +1377,14 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>ソフトウェア更新あり</translation>
     </message>
     <message>
+        <source>%1 is connecting...</source>
+        <translation>%1 は接続処理中…</translation>
+    </message>
+    <message>
+        <source>%1 is waiting %2 seconds before the next retry</source>
+        <translation>%1 は次の再試行まであと %2 秒待機します</translation>
+    </message>
+    <message>
         <source>%1 Encryption Enabled</source>
         <translation>%1 暗号化有効</translation>
     </message>
@@ -1384,22 +1417,22 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
 </context>
 <context>
-    <name>validators::ScreenNameValidator</name>
+    <name>validators::ComputerLineNameValidator</name>
     <message>
         <source>Computer name cannot be empty</source>
-        <translation>コンピュータ名を空にすることはできません</translation>
+        <translation type="unfinished">コンピュータ名を空にすることはできません</translation>
     </message>
     <message>
         <source>Computer name cannot contain spaces</source>
-        <translation>コンピューター名に空白を含めることはできません</translation>
+        <translation type="unfinished">コンピューター名に空白を含めることはできません</translation>
     </message>
     <message>
         <source>Contains invalid characters or is too long</source>
-        <translation>無効な文字が含まれているか長すぎます</translation>
+        <translation type="unfinished">無効な文字が含まれているか長すぎます</translation>
     </message>
     <message>
         <source>A computer with this name already exists</source>
-        <translation>この名前のコンピューターはすでに存在します</translation>
+        <translation type="unfinished">この名前のコンピューターはすでに存在します</translation>
     </message>
 </context>
 </TS>

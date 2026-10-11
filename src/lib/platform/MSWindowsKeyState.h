@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2003 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -40,9 +40,9 @@ public:
   //! @name manipulators
   //@{
 
-  //! Handle screen disabling
+  //! Handle computer disabling
   /*!
-  Called when screen is disabled.  This is needed to deal with platform
+  Called when computer is disabled.  This is needed to deal with platform
   brokenness.
   */
   void disable();
@@ -71,8 +71,8 @@ public:
   Temporarily sets the non-toggle modifier state to those saved by the
   last call to \c saveModifiers if \p enable is \c true.  Restores the
   modifier state to the current modifier state if \p enable is \c false.
-  This is for synthesizing keystrokes on the primary screen when the
-  cursor is on a secondary screen.  When on a secondary screen we capture
+  This is for synthesizing keystrokes on the primary computer when the
+  cursor is on a secondary computer.  When on a secondary computer we capture
   all non-toggle modifier state, track the state internally and do not
   pass it on.  So if Alt+F1 synthesizes Alt+X we need to synthesize
   not just X but also Alt, despite the fact that our internal modifier

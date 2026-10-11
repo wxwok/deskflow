@@ -134,10 +134,6 @@ p, li { white-space: pre-wrap; }
         <source>Switch to %1</source>
         <translation>Переключиться на %1</translation>
     </message>
-    <message>
-        <source>Switch to </source>
-        <translation>Переключиться на </translation>
-    </message>
 </context>
 <context>
     <name>ClientConfigDialog</name>
@@ -170,20 +166,170 @@ p, li { white-space: pre-wrap; }
         <translation type="unfinished">Шкала</translation>
     </message>
     <message>
-        <source>Close and save changes</source>
-        <translation type="unfinished">Закрыть и сохранить изменения</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Allow the client to slow the rate it attempts to reconnect to the server when connections attempts are failing. The delay between connection attempts will  start at 1 second intervals and can be a maxium of 5 minutes between connection attempts.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Позволить клиенту замедлять частоту попыток повторного подключения к серверу в случае неудачных попыток соединения. Интервал между попытками подключения будет начинаться с 1 секунды и может достигать максимума в 5 минут.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <source>Close and forget changes</source>
-        <translation type="unfinished">Закройте изменения и забудьте о них</translation>
+        <source>Use dynamic reconnection time based on connection attempts</source>
+        <translation type="unfinished">Использовать динамическое время переподключения в зависимости от попыток подключения</translation>
+    </message>
+</context>
+<context>
+    <name>ComputerSettingsDialog</name>
+    <message>
+        <source>Computer settings</source>
+        <translation type="unfinished">Настройки компьютера</translation>
     </message>
     <message>
-        <source>Reset to stored values</source>
-        <translation type="unfinished">Сбросить до сохраненных значений</translation>
+        <source>Computer Info</source>
+        <translation type="unfinished">Информация о компьютере</translation>
     </message>
     <message>
-        <source>Reset to default values</source>
-        <translation type="unfinished">Сбросить до значений по умолчанию</translation>
+        <source>Name</source>
+        <translation type="unfinished">Имя</translation>
+    </message>
+    <message>
+        <source>Modifier Keys</source>
+        <translation type="unfinished">Клавиши-модификаторы</translation>
+    </message>
+    <message>
+        <source>M&amp;eta</source>
+        <translation type="unfinished">M&amp;eta</translation>
+    </message>
+    <message>
+        <source>&amp;Ctrl</source>
+        <translation type="unfinished">&amp;Ctrl</translation>
+    </message>
+    <message>
+        <source>S&amp;uper</source>
+        <translation type="unfinished">S&amp;uper</translation>
+    </message>
+    <message>
+        <source>Al&amp;t</source>
+        <translation type="unfinished">Al&amp;t</translation>
+    </message>
+    <message>
+        <source>Shift</source>
+        <translation type="unfinished">Shift</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation type="unfinished">Ctrl</translation>
+    </message>
+    <message>
+        <source>Alt</source>
+        <translation type="unfinished">Alt</translation>
+    </message>
+    <message>
+        <source>Meta</source>
+        <translation type="unfinished">Meta</translation>
+    </message>
+    <message>
+        <source>Super</source>
+        <translation type="unfinished">Super</translation>
+    </message>
+    <message>
+        <source>Alt Gr</source>
+        <translation type="unfinished">Alt Gr</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished">Нет</translation>
+    </message>
+    <message>
+        <source>&amp;Shift</source>
+        <translation type="unfinished">&amp;Shift</translation>
+    </message>
+    <message>
+        <source>Alt &amp;Gr</source>
+        <translation type="unfinished">Alt &amp;Gr</translation>
+    </message>
+    <message>
+        <source>Dead Corners</source>
+        <translation type="unfinished">Мертвые зоны в углах</translation>
+    </message>
+    <message>
+        <source>Top Left</source>
+        <translation type="unfinished">Сверху слева</translation>
+    </message>
+    <message>
+        <source>Top Right</source>
+        <translation type="unfinished">Сверху справа</translation>
+    </message>
+    <message>
+        <source>Corner si&amp;ze</source>
+        <translation type="unfinished">Разм&amp;ер угла</translation>
+    </message>
+    <message>
+        <source>Bottom Left</source>
+        <translation type="unfinished">Снизу слева</translation>
+    </message>
+    <message>
+        <source>Bottom Right</source>
+        <translation type="unfinished">Снизу справа</translation>
+    </message>
+    <message>
+        <source>Fixes</source>
+        <translation type="unfinished">Исправления</translation>
+    </message>
+    <message>
+        <source>SCROLL LOCK key</source>
+        <translation type="unfinished">Клавиша SCROLL LOCK</translation>
+    </message>
+    <message>
+        <source>CAPS LOCK key</source>
+        <translation type="unfinished">Клавиша CAPS LOCK</translation>
+    </message>
+    <message>
+        <source>NUM LOCK key</source>
+        <translation type="unfinished">Клавиша NUM LOCK</translation>
+    </message>
+    <message>
+        <source>XTest for Xinerama</source>
+        <translation type="unfinished">XTest для Xinerama</translation>
+    </message>
+    <message>
+        <source>X11 computers Only, When enabled the client will not give focus to its focused window as soon as the client is switched to. This can help prevent unwanted focus stealing with some X11 setups.</source>
+        <translation type="unfinished">Только для систем X11: если эта функция включена, клиент не будет автоматически передавать фокус своему активному окну сразу после переключения на этот клиент. Это помогает предотвратить нежелательный перехват фокуса в некоторых конфигурациях X11.</translation>
+    </message>
+    <message>
+        <source>Weaken X11 Focus</source>
+        <translation type="unfinished">Ослабить фокус X11</translation>
+    </message>
+    <message>
+        <source>Aliases</source>
+        <translation type="unfinished">Псевдонимы</translation>
+    </message>
+    <message>
+        <source>&amp;Add</source>
+        <translation type="unfinished">&amp;Добавить</translation>
+    </message>
+    <message>
+        <source>&amp;Remove</source>
+        <translation type="unfinished">&amp;Удалить</translation>
+    </message>
+    <message>
+        <source>Computer name is empty</source>
+        <translation type="unfinished">Имя компьютера не указано</translation>
+    </message>
+    <message>
+        <source>The computer name cannot be empty. Please either fill in a name or cancel the dialog.</source>
+        <translation type="unfinished">Имя компьютера не может быть пустым. Введите имя или отмените диалог.</translation>
+    </message>
+    <message>
+        <source>Computer name matches alias</source>
+        <translation type="unfinished">Имя компьютера совпадает с псевдонимом</translation>
+    </message>
+    <message>
+        <source>The computer name cannot be the same as an alias. Please either remove the alias or change the computer name.</source>
+        <translation type="unfinished">Имя компьютера не может совпадать с псевдонимом. Удалите псевдоним или измените имя компьютера.</translation>
+    </message>
+</context>
+<context>
+    <name>ComputerSetupModel</name>
+    <message>
+        <source>&lt;center&gt;Computer: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Double click to edit settings&lt;br&gt;Drag computer to the trashcan to remove it</source>
+        <translation type="unfinished">&lt;center&gt;Компьютер: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Дважды щелкните, чтобы изменить настройки&lt;br&gt;Перетащите компьютер в корзину, чтобы удалить его</translation>
     </message>
 </context>
 <context>
@@ -267,6 +413,17 @@ Do you want to connect to the server?
     </message>
 </context>
 <context>
+    <name>HelpDialog</name>
+    <message>
+        <source>%1 Help</source>
+        <translation type="unfinished">%1 Справка</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">Закрывать</translation>
+    </message>
+</context>
+<context>
     <name>HotkeyDialog</name>
     <message>
         <source>Hotkey</source>
@@ -294,6 +451,33 @@ Do you want to connect to the server?
     <message>
         <source>Attach to window</source>
         <translation>Прикрепить к окну</translation>
+    </message>
+</context>
+<context>
+    <name>LogLevel</name>
+    <message>
+        <source>Fatal</source>
+        <translation type="unfinished">Критический</translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished">Ошибка</translation>
+    </message>
+    <message>
+        <source>Warning</source>
+        <translation type="unfinished">Предупреждение</translation>
+    </message>
+    <message>
+        <source>Info</source>
+        <translation type="unfinished">Инфо</translation>
+    </message>
+    <message>
+        <source>Debug</source>
+        <translation type="unfinished">Отладка</translation>
+    </message>
+    <message>
+        <source>Verbose</source>
+        <translation type="unfinished">Многословный</translation>
     </message>
 </context>
 <context>
@@ -359,10 +543,6 @@ Do you want to connect to the server?
         <translation>Пожалуйста, введите имя хоста или IP-адрес другого компьютера.</translation>
     </message>
     <message>
-        <source>Core cannot be started</source>
-        <translation>Не удалось запустить ядро</translation>
-    </message>
-    <message>
         <source>Save server configuration as...</source>
         <translation>Сохранить конфигурацию сервера как...</translation>
     </message>
@@ -393,6 +573,18 @@ Do you want to connect to the server?
     <message>
         <source>&lt;p&gt;Failed to connect to the server &apos;%1&apos;.&lt;/p&gt;&lt;p&gt;A Client with your name is already connected to the server.&lt;/p&gt;Please ensure that you&apos;re using a unique name and that only a single instance of the client process is running.&lt;/p&gt;</source>
         <translation>&lt;p&gt;Не удалось подключиться к серверу &apos;%1&apos;.&lt;/p&gt;&lt;p&gt;Клиент с таким именем уже подключен к серверу.&lt;/p&gt;Убедитесь, что вы используете уникальное имя и запущен только один процесс клиента.&lt;/p&gt;</translation>
+    </message>
+    <message>
+        <source>View &amp;Help</source>
+        <translation type="unfinished">Просмотр &amp;справки</translation>
+    </message>
+    <message>
+        <source>Invalid Computer Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer name already exists</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No IP Detected</source>
@@ -441,14 +633,6 @@ A bound IP is now invalid, you may need to restart the server.</source>
         <translation>&amp;Справка</translation>
     </message>
     <message>
-        <source>Clear settings</source>
-        <translation>Сбросить настройки</translation>
-    </message>
-    <message>
-        <source>Report a Bug</source>
-        <translation>Сообщить об ошибке</translation>
-    </message>
-    <message>
         <source>&amp;Minimize to tray</source>
         <translation>&amp;Свернуть в трей</translation>
     </message>
@@ -494,14 +678,6 @@ A bound IP is now invalid, you may need to restart the server.</source>
         <translation>Ctrl+Q</translation>
     </message>
     <message>
-        <source>Invalid Screen Name</source>
-        <translation>Недопустимое имя экрана</translation>
-    </message>
-    <message>
-        <source>Screen name already exists</source>
-        <translation>Имя экрана уже существует</translation>
-    </message>
-    <message>
         <source>The name you have chosen is invalid.
 
 Valid names:
@@ -524,10 +700,6 @@ Valid names:
         <translation>Рекомендуемый IP-адрес: </translation>
     </message>
     <message>
-        <source>The Core executable could not be successfully started, although it does exist. Please check if you have sufficient permissions to run this program.</source>
-        <translation>Не удалось запустить исполняемый файл ядра, хотя он существует. Проверьте наличие прав на запуск программы.</translation>
-    </message>
-    <message>
         <source>&amp;Configure Client</source>
         <translation type="unfinished">&amp;Настройка клиента</translation>
     </message>
@@ -539,13 +711,45 @@ Valid names:
         <source>&lt;html&gt;Hostname or IP address of the server computer.&lt;br/&gt;May contain a comma seperated list.&lt;/html&gt;</source>
         <translation type="unfinished">&lt;html&gt;Имя хоста или IP-адрес серверного компьютера.&lt;br/&gt;Может содержать список, разделенный запятыми.&lt;/html&gt;</translation>
     </message>
+    <message>
+        <source>read</source>
+        <translation type="unfinished">прочитать</translation>
+    </message>
+    <message>
+        <source>read and write</source>
+        <translation type="unfinished">читать и записывать</translation>
+    </message>
+    <message>
+        <source>The Core executable could not be started.
+Please check if you have sufficient permissions to run %1.</source>
+        <translation type="unfinished">Не удалось запустить исполняемый файл Core.
+Проверьте, достаточно ли у вас прав для запуска %1.</translation>
+    </message>
+    <message>
+        <source>
+Additionally, check you are able to %1 the server config file: %2</source>
+        <translation type="unfinished">
+Также убедитесь, что вы можете %1 файл конфигурации сервера: %2</translation>
+    </message>
+    <message>
+        <source>Don&apos;t show this again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Missing Keyboard Layouts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Keyboard layout support requires matching layouts on all computers. The following layouts from the other computer are not installed on this computer:&lt;/p&gt;&lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;Please install them to enable support for these layouts.&lt;/p&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
-    <name>NewScreenWidget</name>
+    <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
         <extracomment>Used as the hostname. Translation may not contain spaces</extracomment>
-        <translation>Без_имени</translation>
+        <translation type="unfinished">Без_имени</translation>
     </message>
 </context>
 <context>
@@ -623,8 +827,8 @@ Valid names:
         <translation>%1 - Новый клиент</translation>
     </message>
     <message>
-        <source>A new client called &apos;%1&apos; has been accepted. You&apos;ll need to add it to your server&apos;s screen layout.</source>
-        <translation>Новый клиент «%1» принят. Вам необходимо добавить его на макет экранов сервера.</translation>
+        <source>A new client called &apos;%1&apos; has been accepted. You&apos;ll need to add it to your server&apos;s computer layout.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Ignore</source>
@@ -637,26 +841,6 @@ Valid names:
     <message>
         <source>A new client called &apos;%1&apos; wants to connect</source>
         <translation>Новый клиент &apos;%1&apos; хочет подключиться</translation>
-    </message>
-    <message>
-        <source>%1 Clear Settings</source>
-        <translation>%1 Сброс настроек</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Are you sure you want to clear all settings and restart %1?&lt;/p&gt;&lt;p&gt;This action cannot be undone.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;Вы уверены, что хотите сбросить все настройки и перезапустить %1?&lt;/p&gt;&lt;p&gt;Это действие нельзя отменить.&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>%1 Read-only settings</source>
-        <translation>%1 Настройки только для чтения</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Settings are read-only because you only have read access to the file:&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;</source>
-        <translation>&lt;p&gt;Настройки доступны только для чтения, так как у вас есть доступ только на чтение к файлу:&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;p&gt;Sorry, while this version of %1 does support Wayland, this build was not linked with one or more of the required libraries.&lt;/p&gt;&lt;p&gt;Please either switch to X from your login screen or use a build that uses the correct libraries.&lt;/p&gt;&lt;p&gt;If you think this is incorrect, please &lt;a href=&quot;%2&quot;&gt;report a bug&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;Please check the logs for more information.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;Хотя эта версия %1 поддерживает Wayland, данная сборка не была слинкована с необходимыми библиотеками.&lt;/p&gt;&lt;p&gt;Пожалуйста, переключитесь на сессию X11 или используйте сборку с поддержкой нужных библиотек.&lt;/p&gt;&lt;p&gt;Если вы считаете это ошибкой, пожалуйста, &lt;a href=&quot;%2&quot;&gt;сообщите о ней&lt;/a&gt;.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>No thanks</source>
@@ -709,147 +893,33 @@ Valid names:
         <source>%1 is already running</source>
         <translation>%1 уже запущен</translation>
     </message>
-</context>
-<context>
-    <name>ScreenSettingsDialog</name>
     <message>
-        <source>Computer settings</source>
-        <translation>Настройки компьютера</translation>
+        <source>Alt</source>
+        <translation type="unfinished">Alt</translation>
     </message>
     <message>
-        <source>Computer Info</source>
-        <translation>Информация о компьютере</translation>
-    </message>
-    <message>
-        <source>Name</source>
-        <translation>Имя</translation>
-    </message>
-    <message>
-        <source>Modifier Keys</source>
-        <translation>Клавиши-модификаторы</translation>
-    </message>
-    <message>
-        <source>M&amp;eta</source>
-        <translation>M&amp;eta</translation>
-    </message>
-    <message>
-        <source>&amp;Ctrl</source>
-        <translation>&amp;Ctrl</translation>
-    </message>
-    <message>
-        <source>S&amp;uper</source>
-        <translation>S&amp;uper</translation>
-    </message>
-    <message>
-        <source>Al&amp;t</source>
-        <translation>Al&amp;t</translation>
-    </message>
-    <message>
-        <source>Shift</source>
-        <translation>Shift</translation>
+        <source>AltGr</source>
+        <translation type="unfinished">AltGr</translation>
     </message>
     <message>
         <source>Ctrl</source>
-        <translation>Ctrl</translation>
-    </message>
-    <message>
-        <source>Alt</source>
-        <translation>Alt</translation>
+        <translation type="unfinished">Ctrl</translation>
     </message>
     <message>
         <source>Meta</source>
-        <translation>Meta</translation>
-    </message>
-    <message>
-        <source>Super</source>
-        <translation>Super</translation>
+        <translation type="unfinished">Meta</translation>
     </message>
     <message>
         <source>None</source>
-        <translation>Нет</translation>
+        <translation type="unfinished">Нет</translation>
     </message>
     <message>
-        <source>&amp;Shift</source>
-        <translation>&amp;Shift</translation>
+        <source>Shift</source>
+        <translation type="unfinished">Shift</translation>
     </message>
     <message>
-        <source>Dead Corners</source>
-        <translation>Мертвые зоны в углах</translation>
-    </message>
-    <message>
-        <source>Top Left</source>
-        <translation>Сверху слева</translation>
-    </message>
-    <message>
-        <source>Top Right</source>
-        <translation>Сверху справа</translation>
-    </message>
-    <message>
-        <source>Corner si&amp;ze</source>
-        <translation>Разм&amp;ер угла</translation>
-    </message>
-    <message>
-        <source>Bottom Left</source>
-        <translation>Снизу слева</translation>
-    </message>
-    <message>
-        <source>Bottom Right</source>
-        <translation>Снизу справа</translation>
-    </message>
-    <message>
-        <source>Fixes</source>
-        <translation>Исправления</translation>
-    </message>
-    <message>
-        <source>SCROLL LOCK key</source>
-        <translation>Клавиша SCROLL LOCK</translation>
-    </message>
-    <message>
-        <source>CAPS LOCK key</source>
-        <translation>Клавиша CAPS LOCK</translation>
-    </message>
-    <message>
-        <source>NUM LOCK key</source>
-        <translation>Клавиша NUM LOCK</translation>
-    </message>
-    <message>
-        <source>XTest for Xinerama</source>
-        <translation>XTest для Xinerama</translation>
-    </message>
-    <message>
-        <source>Aliases</source>
-        <translation>Псевдонимы</translation>
-    </message>
-    <message>
-        <source>&amp;Add</source>
-        <translation>&amp;Добавить</translation>
-    </message>
-    <message>
-        <source>&amp;Remove</source>
-        <translation>&amp;Удалить</translation>
-    </message>
-    <message>
-        <source>Screen name is empty</source>
-        <translation>Имя экрана пустое</translation>
-    </message>
-    <message>
-        <source>The screen name cannot be empty. Please either fill in a name or cancel the dialog.</source>
-        <translation>Имя экрана не может быть пустым. Введите имя или закройте окно.</translation>
-    </message>
-    <message>
-        <source>Screen name matches alias</source>
-        <translation>Имя экрана совпадает с псевдонимом</translation>
-    </message>
-    <message>
-        <source>The screen name cannot be the same as an alias. Please either remove the alias or change the screen name.</source>
-        <translation>Имя экрана не может совпадать с псевдонимом. Удалите псевдоним или измените имя экрана.</translation>
-    </message>
-</context>
-<context>
-    <name>ScreenSetupModel</name>
-    <message>
-        <source>&lt;center&gt;Screen: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Double click to edit settings&lt;br&gt;Drag screen to the trashcan to remove it</source>
-        <translation>&lt;center&gt;Экран: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Двойной клик для настроек&lt;br&gt;Перетащите экран в корзину для удаления</translation>
+        <source>Super</source>
+        <translation type="unfinished">Super</translation>
     </message>
 </context>
 <context>
@@ -934,34 +1004,6 @@ Valid names:
         <translation>Расширенные</translation>
     </message>
     <message>
-        <source>&amp;Dead corners (for this computer)</source>
-        <translation>&amp;Мертвые зоны (для этого компьютера)</translation>
-    </message>
-    <message>
-        <source>&amp;Bottom-left</source>
-        <translation>&amp;Снизу слева</translation>
-    </message>
-    <message>
-        <source>To&amp;p-left</source>
-        <translation>Свер&amp;ху слева</translation>
-    </message>
-    <message>
-        <source>Bottom-ri&amp;ght</source>
-        <translation>Снизу с&amp;права</translation>
-    </message>
-    <message>
-        <source>Top-rig&amp;ht</source>
-        <translation>Сверху спр&amp;ава</translation>
-    </message>
-    <message>
-        <source>Cor&amp;ner size</source>
-        <translation>Разме&amp;р угла</translation>
-    </message>
-    <message>
-        <source>px</source>
-        <translation>пикс</translation>
-    </message>
-    <message>
         <source>&amp;Misc</source>
         <translation>&amp;Разное</translation>
     </message>
@@ -1026,14 +1068,6 @@ Valid names:
         <translation>Переключать по двойному &amp;касанию за</translation>
     </message>
     <message>
-        <source>Config file</source>
-        <translation>Файл конфигурации</translation>
-    </message>
-    <message>
-        <source>Core server config file</source>
-        <translation>Файл конфигурации ядра сервера</translation>
-    </message>
-    <message>
         <source>Use a server config file to create complex computer layouts that are not possible with the simple grid-based computer layout editor.
 
 Enabling this setting will disable the server config GUI.</source>
@@ -1072,16 +1106,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Проверять обновления при запуске</translation>
     </message>
     <message>
-        <source>Hide the window when the app starts</source>
-        <translation>Скрывать окно при запуске</translation>
-    </message>
-    <message>
         <source>Prevent this computer from going to sleep</source>
         <translation>Запретить компьютеру переходить в спящий режим</translation>
-    </message>
-    <message>
-        <source>Leave app running in notification area when the window is closed</source>
-        <translation>Оставлять приложение в области уведомлений при закрытии окна</translation>
     </message>
     <message>
         <source>Tray icon style</source>
@@ -1132,44 +1158,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Уровень</translation>
     </message>
     <message>
-        <source>Fatal</source>
-        <translation>Критический</translation>
-    </message>
-    <message>
-        <source>Error</source>
-        <translation>Ошибка</translation>
-    </message>
-    <message>
-        <source>Warning</source>
-        <translation>Предупреждение</translation>
-    </message>
-    <message>
-        <source>Note</source>
-        <translation>Примечание</translation>
-    </message>
-    <message>
-        <source>Info</source>
-        <translation>Инфо</translation>
-    </message>
-    <message>
-        <source>Debug</source>
-        <translation>Отладка</translation>
-    </message>
-    <message>
-        <source>Debug1</source>
-        <translation>Отладка 1</translation>
-    </message>
-    <message>
-        <source>Debug2</source>
-        <translation>Отладка 2</translation>
-    </message>
-    <message>
         <source>Log path</source>
         <translation>Путь к журналам</translation>
-    </message>
-    <message>
-        <source>Using a Debug log level may affect performance. Only use a Debug level if you are attempting to debug an issue or are gathering logs to submit with a bug report.</source>
-        <translation>Уровень отладки может повлиять на производительность. Используйте его только для поиска неисправностей.</translation>
     </message>
     <message>
         <source>Enable GUI debug messages</source>
@@ -1184,16 +1174,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Всегда запускать от имени системы (работает на экране входа и UAC)</translation>
     </message>
     <message>
-        <source>Force a language to be used for the GUI.</source>
-        <translation>Принудительно использовать язык для интерфейса.</translation>
-    </message>
-    <message>
         <source>Language</source>
         <translation>Язык</translation>
-    </message>
-    <message>
-        <source>Enable wl-clipboard support</source>
-        <translation>Включить поддержку wl-clipboard</translation>
     </message>
     <message>
         <source>TLS Certificate Regenerated</source>
@@ -1212,6 +1194,14 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Сохранить файл журнала в...</translation>
     </message>
     <message>
+        <source>%1 Clear Settings</source>
+        <translation type="unfinished">%1 Сброс настроек</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Are you sure you want to clear all settings and restart %1?&lt;/p&gt; &lt;p&gt;This action cannot be undone.&lt;/p&gt;</source>
+        <translation type="unfinished">&lt;p&gt;Вы уверены, что хотите сбросить все настройки и перезапустить %1?&lt;/p&gt; &lt;p&gt;Это действие нельзя отменить.&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>Required messages</source>
         <translation>Обязательные сообщения</translation>
     </message>
@@ -1224,10 +1214,6 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Общие предупреждения</translation>
     </message>
     <message>
-        <source>Notable events</source>
-        <translation>Важные события</translation>
-    </message>
-    <message>
         <source>General events [Default]</source>
         <translation>Общие события [По умолчанию]</translation>
     </message>
@@ -1236,32 +1222,8 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Записи отладки</translation>
     </message>
     <message>
-        <source>More debug output</source>
-        <translation>Расширенный вывод отладки</translation>
-    </message>
-    <message>
         <source>Verbose debug output</source>
         <translation>Подробный вывод отладки</translation>
-    </message>
-    <message>
-        <source>Close and save changes</source>
-        <translation type="unfinished">Закрыть и сохранить изменения</translation>
-    </message>
-    <message>
-        <source>Close and forget changes</source>
-        <translation type="unfinished">Закройте изменения и забудьте о них</translation>
-    </message>
-    <message>
-        <source>Reset to stored values</source>
-        <translation type="unfinished">Сбросить до сохраненных значений</translation>
-    </message>
-    <message>
-        <source>Reset to default values</source>
-        <translation type="unfinished">Сбросить до значений по умолчанию</translation>
-    </message>
-    <message>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Requires the wl-clipboard package&lt;/p&gt;&lt;p&gt;When using wl-clipboard v2.2.1, there is a focus stealing bug that may make Deskflow harder to use. This has been fixed when using the wl-clipboard master branch, unless your Compositor lacks wlroots-data-control protocol support.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Требуется пакет wl-clipboard. В версии 2.2.1 есть ошибка перехвата фокуса.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Automatic</source>
@@ -1287,6 +1249,73 @@ Enabling this setting will disable the server config GUI.</source>
         <source>&amp;Network</source>
         <translation>&amp;Сеть</translation>
     </message>
+    <message>
+        <source>&amp;Window</source>
+        <translation type="unfinished">&amp;Окно</translation>
+    </message>
+    <message>
+        <source>When the main window is closed</source>
+        <translation type="unfinished">Когда главное окно закрыто</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Выход</translation>
+    </message>
+    <message>
+        <source>Send to background</source>
+        <translation type="unfinished">Отправить в фоновый режим</translation>
+    </message>
+    <message>
+        <source>When the application starts</source>
+        <translation type="unfinished">Когда приложение запускается</translation>
+    </message>
+    <message>
+        <source>Show the main window</source>
+        <translation type="unfinished">Показать главное окно</translation>
+    </message>
+    <message>
+        <source>Run command on enter</source>
+        <translation type="unfinished">Выполнять команду по нажатию Enter</translation>
+    </message>
+    <message>
+        <source>Run command on exit</source>
+        <translation type="unfinished">Выполнить команду при выходе</translation>
+    </message>
+    <message>
+        <source>Using a log level higher than Info may affect performance.</source>
+        <translation type="unfinished">Использование уровня логирования выше Info может повлиять на производительность.</translation>
+    </message>
+    <message>
+        <source>Remove all settings</source>
+        <translation type="unfinished">Удалить все настройки</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialogButtonBox</name>
+    <message>
+        <source>Settings are read only</source>
+        <translation type="unfinished">Настройки доступны только для чтения</translation>
+    </message>
+    <message>
+        <source>%1 is not writable</source>
+        <translation type="unfinished">%1 недоступен для записи</translation>
+    </message>
+    <message>
+        <source>Close and save changes</source>
+        <translation type="unfinished">Закрыть и сохранить изменения</translation>
+    </message>
+    <message>
+        <source>Close and forget changes</source>
+        <translation type="unfinished">Закройте изменения и забудьте о них</translation>
+    </message>
+    <message>
+        <source>Reset to stored values</source>
+        <translation type="unfinished">Сбросить до сохраненных значений</translation>
+    </message>
+    <message>
+        <source>Reset to default values</source>
+        <translation type="unfinished">Сбросить до значений по умолчанию</translation>
+    </message>
 </context>
 <context>
     <name>StatusBar</name>
@@ -1309,10 +1338,6 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>%1 is waiting for clients</source>
         <translation>%1 ожидает подключения клиентов</translation>
-    </message>
-    <message>
-        <source>%1 is connecting...</source>
-        <translation>%1 подключается...</translation>
     </message>
     <message>
         <source>%1 is connected as client of %2</source>
@@ -1350,6 +1375,14 @@ Enabling this setting will disable the server config GUI.</source>
         <translation>Доступно обновление</translation>
     </message>
     <message>
+        <source>%1 is connecting...</source>
+        <translation>%1 подключается...</translation>
+    </message>
+    <message>
+        <source>%1 is waiting %2 seconds before the next retry</source>
+        <translation type="unfinished">%1 ожидает %2 секунд перед следующей попыткой</translation>
+    </message>
+    <message>
         <source>%1 Encryption Enabled</source>
         <translation>Шифрование %1 включено</translation>
     </message>
@@ -1382,22 +1415,22 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
 </context>
 <context>
-    <name>validators::ScreenNameValidator</name>
+    <name>validators::ComputerLineNameValidator</name>
     <message>
         <source>Computer name cannot be empty</source>
-        <translation>Имя компьютера не может быть пустым</translation>
+        <translation type="unfinished">Имя компьютера не может быть пустым</translation>
     </message>
     <message>
         <source>Computer name cannot contain spaces</source>
-        <translation>Имя компьютера не может содержать пробелы</translation>
+        <translation type="unfinished">Имя компьютера не может содержать пробелы</translation>
     </message>
     <message>
         <source>Contains invalid characters or is too long</source>
-        <translation>Имя содержит недопустимые символы или слишком длинное</translation>
+        <translation type="unfinished">Содержит недопустимые символы или слишком длинный</translation>
     </message>
     <message>
         <source>A computer with this name already exists</source>
-        <translation>Компьютер с таким именем уже существует</translation>
+        <translation type="unfinished">Компьютер с таким именем уже существует</translation>
     </message>
 </context>
 </TS>

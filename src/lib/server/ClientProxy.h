@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -49,7 +49,7 @@ public:
 
   //@}
 
-  // IScreen
+  // IComputer
   void *getEventTarget() const override;
   bool getClipboard(ClipboardID id, IClipboard *) const override = 0;
   void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const override = 0;

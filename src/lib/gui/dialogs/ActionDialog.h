@@ -2,7 +2,7 @@
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Chris Rizzitello <sithlord48@gmail.com>
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2008 Volker Lanz <vl@fidra.de>
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -32,7 +32,7 @@ public:
     inline static const auto ToggleKey = 2;
     inline static const auto SwitchTo = 3;
     inline static const auto SwitchInDirection = 4;
-    inline static const auto SwitchToNextScreen = 5;
+    inline static const auto SwitchToNextComputer = 5;
     inline static const auto ModifyCursorLock = 6;
     inline static const auto RestartServer = 7;
   };

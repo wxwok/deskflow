@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2024 Chris Rizzitello <sithord48@gmail.com>
- * SPDX-FileCopyrightText: (C) 2012 - 2024 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2024 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2008 Volker Lanz <vl@fidra.de>
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -32,7 +32,7 @@
 #include <QLoggingCategory>
 #endif
 
-#if defined(WINAPI_XWINDOWS) or defined(WINAPI_LIBEI)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
 #include "platform/XDGPortalRegistry.h"
 #endif
 
@@ -51,8 +51,9 @@ int main(int argc, char *argv[])
   QLoggingCategory::setFilterRules(QStringLiteral("*.debug=true\nqt.*=false"));
 #endif
 
-#if defined(WINAPI_XWINDOWS) or defined(WINAPI_LIBEI)
-  deskflow::platform::setAppId();
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
+  if (QT_VERSION < QT_VERSION_CHECK(6, 10, 0))
+    deskflow::platform::setAppId();
 #endif
 
   QCoreApplication::setApplicationName(kAppName);

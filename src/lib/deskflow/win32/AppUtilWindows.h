@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2025 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2025 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -38,7 +38,6 @@ public:
   int daemonNTMainLoop();
   int run() override;
   void exitApp(int code) override;
-  void startNode() override;
   std::vector<std::string> getKeyboardLayoutList() override;
   std::string getCurrentLanguageCode() override;
   HKL getCurrentKeyboardLayout() const;

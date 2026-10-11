@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2015 - 2021 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2015 - 2021 Synergy App Ltd
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
 
@@ -15,6 +15,7 @@ public:
   ~ClientProxy1_8() override = default;
 
   void keyDown(KeyID, KeyModifierMask, KeyButton, const std::string &) override;
+  void keyRepeat(KeyID, KeyModifierMask, int32_t count, KeyButton, const std::string &) override;
 
 private:
   void synchronizeLanguages() const;

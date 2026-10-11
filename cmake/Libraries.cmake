@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: (C) 2024 - 2025 Deskflow Developers
+# SPDX-FileCopyrightText: (C) 2024 - 2026 Deskflow Developers
 # SPDX-FileCopyrightText: (C) 2024 Symless Ltd
 # SPDX-License-Identifier: MIT
 
@@ -19,36 +19,6 @@ macro(configure_libs)
     )
   endif()
 
-  find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS Core Widgets Network)
-  if(UNIX AND NOT APPLE)
-      find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS DBus Xml)
-  endif()
-
-  # Define the location of Qt deployment tool
-  if(WIN32)
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND VCPKG_QT)
-      set(DEPLOY_TOOL windeployqt.debug.bat)
-    else()
-      set(DEPLOY_TOOL windeployqt)
-    endif()
-  elseif(APPLE)
-      set(DEPLOY_TOOL macdeployqt)
-  endif()
-
-  if (WIN32 OR APPLE)
-    find_program(DEPLOYQT ${DEPLOY_TOOL})
-    if(DEPLOYQT STREQUAL "DEPLOYQT-NOTFOUND")
-      message(FATAL_ERROR "Unable to locate the Qt Deploy Tool: \"${DEPLOY_TOOL}\"")
-    endif()
-    unset(DEPLOY_TOOL)
-  endif()
-
-  set(CMAKE_AUTOMOC ON)
-  set(CMAKE_AUTOUIC ON)
-  set(CMAKE_AUTORCC ON)
-
-  message(STATUS "Qt version: ${Qt6_VERSION}")
-
   # Check if <format> header is available
   check_cxx_source_compiles("
     #include <format>
@@ -62,28 +32,6 @@ macro(configure_libs)
   if(HAVE_FORMAT)
     add_definitions(-DHAVE_FORMAT)
   endif()
-
-  option(ENABLE_COVERAGE "Enable test coverage" OFF)
-  if(ENABLE_COVERAGE)
-    message(STATUS "Enabling code coverage")
-    include(cmake/CodeCoverage.cmake)
-    append_coverage_compiler_flags()
-    set(test_exclude subprojects/* build/* src/unittests/*)
-    set(test_src ${PROJECT_SOURCE_DIR}/src)
-
-    # Apparently solves the bug in gcov where it returns negative counts and confuses gcovr.
-    # > Got negative hit value in gcov line 'branch  2 taken -1' caused by a bug in gcov tool
-    # Bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=68080
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-update=atomic")
-
-    setup_target_for_coverage_gcovr_xml(
-      NAME coverage-legacytests
-      EXECUTABLE legacytests
-      BASE_DIRECTORY ${test_src}
-      EXCLUDE ${test_exclude}
-    )
-  endif()
-
 endmacro()
 
 #
@@ -110,7 +58,6 @@ macro(configure_unix_libs)
     message(FATAL_ERROR "Missing header: sys/socket.h")
   endif()
 
-
   check_include_files(unistd.h HAVE_UNISTD_H)
   if (NOT HAVE_UNISTD_H)
     message(FATAL_ERROR "Missing unistd.h")
@@ -130,7 +77,6 @@ macro(configure_unix_libs)
   endif()
 
   if(APPLE)
-    set(CMAKE_CXX_FLAGS "--sysroot ${CMAKE_OSX_SYSROOT} ${CMAKE_CXX_FLAGS} -DGTEST_USE_OWN_TR1_TUPLE=1")
     find_library(lib_ScreenSaver ScreenSaver)
     find_library(lib_IOKit IOKit)
     find_library(lib_ApplicationServices ApplicationServices)
@@ -141,8 +87,6 @@ macro(configure_unix_libs)
       ${lib_ScreenSaver} ${lib_IOKit} ${lib_ApplicationServices}
       ${lib_Foundation} ${lib_Carbon} ${lib_UserNotifications}
     )
-
-    add_definitions(-DWINAPI_CARBON=1)
   else()
 
     if (BUILD_X11_SUPPORT)
@@ -153,19 +97,16 @@ macro(configure_unix_libs)
     find_package(PkgConfig)
     if(PKG_CONFIG_FOUND)
       pkg_check_modules(LIBXKBCOMMON REQUIRED xkbcommon)
-      pkg_check_modules(GLIB2 REQUIRED glib-2.0)
-      find_library(LIBM m)
-      include_directories(${LIBXKBCOMMON_INCLUDE_DIRS} ${GLIB2_INCLUDE_DIRS}
-                          ${LIBM_INCLUDE_DIRS})
-      
       message(STATUS "xkbcommon version: ${LIBXKBCOMMON_VERSION}")
+      include_directories(${LIBXKBCOMMON_INCLUDE_DIRS})
+
+      pkg_check_modules(LIBXKBREGISTRY REQUIRED xkbregistry)
+      message(STATUS "xkbregistry version: ${LIBXKBREGISTRY_VERSION}")
+      include_directories(${LIBXKBREGISTRY_INCLUDE_DIRS})
     else()
       message(WARNING "pkg-config not found, skipping wayland libraries")
     endif()
   endif()
-
-  add_definitions(-DSYSAPI_UNIX=1)
-
 endmacro()
 
 #

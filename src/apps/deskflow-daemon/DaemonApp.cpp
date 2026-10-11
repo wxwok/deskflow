@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2026 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2025 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2025 Synergy App Ltd
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
 
@@ -15,10 +15,9 @@
 #include "common/Settings.h"
 #include "deskflow/ipc/DaemonIpcServer.h"
 
-#if SYSAPI_WIN32
-
+#if defined(Q_OS_WIN)
 #include "arch/win32/ArchDaemonWindows.h"
-#include "deskflow/Screen.h"
+#include "deskflow/Computer.h"
 #include "platform/MSWindowsDebugOutputter.h"
 #include "platform/MSWindowsEventQueueBuffer.h"
 #include "platform/MSWindowsWatchdog.h"
@@ -28,7 +27,9 @@
 
 #endif
 
-#include <string>
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QSettings>
 
 using namespace deskflow::core;
 
@@ -46,26 +47,53 @@ void DaemonApp::saveLogLevel(const QString &logLevel) const
   Settings::setValue(Settings::Daemon::LogLevel, logLevel);
 }
 
-void DaemonApp::setElevate(bool elevate)
+void DaemonApp::setConfigFile(const QString &configFile)
 {
-  LOG_DEBUG("elevate value changed: %s", elevate ? "yes" : "no");
-  m_elevate = elevate;
-  Settings::setValue(Settings::Daemon::Elevate, m_elevate);
-}
-
-void DaemonApp::setCommand(const QString &command)
-{
-  LOG_DEBUG("service command updated");
-  Settings::setValue(Settings::Daemon::Command, command);
-  m_command = command.toStdString();
+  LOG_DEBUG("config file updated: %s", configFile.toUtf8().constData());
+  m_configFile = configFile;
+  Settings::setValue(Settings::Daemon::ConfigFile, configFile);
 }
 
 void DaemonApp::applyWatchdogCommand() const
 {
-  LOG_DEBUG("applying watchdog command");
+#if defined(Q_OS_WIN)
+  if (m_configFile.isEmpty()) {
+    LOG_ERR("cannot apply watchdog command: no config file set");
+    return;
+  }
 
-#if SYSAPI_WIN32
-  m_pWatchdog->setProcessConfig(m_command, m_elevate);
+  // QFileInfo::exists on a UNC path triggers SMB auth from this SYSTEM-context
+  // process, leaking the machine NTLM hash to whoever controls the remote host.
+  // Any local user can reach this via the IPC pipe, so reject remote paths up front.
+  if (m_configFile.startsWith(QStringLiteral("\\\\")) || m_configFile.startsWith(QStringLiteral("//"))) {
+    LOG_ERR("cannot apply watchdog command: remote config file paths are not allowed: %s", qPrintable(m_configFile));
+    return;
+  }
+
+  if (!QFileInfo::exists(m_configFile)) {
+    LOG_ERR("cannot apply watchdog command: config file does not exist: %s", qPrintable(m_configFile));
+    return;
+  }
+
+  QSettings config(m_configFile, QSettings::IniFormat);
+  const auto coreMode = config.value(Settings::Core::CoreMode).toInt();
+  const auto elevate = config.value(Settings::Daemon::Elevate, !Settings::isPortableMode()).toBool();
+
+  QString modeArg;
+  if (coreMode == Settings::CoreMode::Server) {
+    modeArg = QStringLiteral("server");
+  } else if (coreMode == Settings::CoreMode::Client) {
+    modeArg = QStringLiteral("client");
+  } else {
+    LOG_ERR("cannot apply watchdog command: invalid core mode in config: %d", coreMode);
+    return;
+  }
+
+  const auto corePath = QStringLiteral("%1/%2").arg(QCoreApplication::applicationDirPath(), kCoreBinName);
+  const auto command = QStringLiteral("\"%1\" %2 --settings \"%3\"").arg(corePath, modeArg, m_configFile).toStdString();
+
+  LOG_DEBUG("applying watchdog command (elevate: %s)", elevate ? "yes" : "no");
+  m_pWatchdog->setProcessConfig(command, elevate);
 #else
   LOG_ERR("applying watchdog command not implemented on this platform");
 #endif
@@ -75,21 +103,22 @@ void DaemonApp::clearWatchdogCommand()
 {
   LOG_DEBUG("clearing watchdog command");
 
-  // Clear the setting to prevent it from being next time the daemon starts.
-  setCommand("");
+  // Clear the persisted config path so the daemon does not auto-start the core on next boot.
+  m_configFile.clear();
+  Settings::setValue(Settings::Daemon::ConfigFile);
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   m_pWatchdog->setProcessConfig("", false);
 #else
   LOG_ERR("clearing watchdog command not implemented on this platform");
 #endif
 }
 
-void DaemonApp::clearSettings() const
+void DaemonApp::clearSettings()
 {
   LOG_INFO("clearing daemon settings");
-  Settings::setValue(Settings::Daemon::Command);
-  Settings::setValue(Settings::Daemon::Elevate);
+  m_configFile.clear();
+  Settings::setValue(Settings::Daemon::ConfigFile);
   Settings::setValue(Settings::Daemon::LogFile);
   Settings::setValue(Settings::Daemon::LogLevel);
 }
@@ -99,8 +128,7 @@ void DaemonApp::connectIpcServer(const ipc::DaemonIpcServer *ipcServer) const
   // Use direct connection as this object is on it's own thread,
   // and so is on a different event loop to the main Qt loop.
   connect(ipcServer, &ipc::DaemonIpcServer::logLevelChanged, this, &DaemonApp::saveLogLevel, Qt::DirectConnection);
-  connect(ipcServer, &ipc::DaemonIpcServer::elevateModeChanged, this, &DaemonApp::setElevate, Qt::DirectConnection);
-  connect(ipcServer, &ipc::DaemonIpcServer::commandChanged, this, &DaemonApp::setCommand, Qt::DirectConnection);
+  connect(ipcServer, &ipc::DaemonIpcServer::configFileChanged, this, &DaemonApp::setConfigFile, Qt::DirectConnection);
   connect(
       ipcServer, &ipc::DaemonIpcServer::startProcessRequested, this, &DaemonApp::applyWatchdogCommand,
       Qt::DirectConnection
@@ -116,7 +144,7 @@ void DaemonApp::connectIpcServer(const ipc::DaemonIpcServer *ipcServer) const
 
 void DaemonApp::run(QThread &daemonThread)
 {
-  LOG_NOTE("starting daemon");
+  LOG_INFO("starting daemon");
 
   // Important: Move the daemon app to the daemon thread before creating any more Qt objects
   // owned by the daemon app, as they will be created on the daemon thread.
@@ -137,14 +165,14 @@ void DaemonApp::run(QThread &daemonThread)
     LOG_DEBUG("daemon thread finished");
   });
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   m_pWatchdog = std::make_unique<MSWindowsWatchdog>(m_foreground, *m_pFileLogOutputter);
 
-  auto command = Settings::value(Settings::Daemon::Command).toString().toStdString();
-  bool elevate = Settings::value(Settings::Daemon::Elevate).toBool();
-  if (!command.empty()) {
-    LOG_DEBUG("using last known command: %s", command.c_str());
-    m_pWatchdog->setProcessConfig(command, elevate);
+  if (const auto persistedConfig = Settings::value(Settings::Daemon::ConfigFile).toString();
+      !persistedConfig.isEmpty()) {
+    LOG_DEBUG("using last known config file: %s", persistedConfig.toUtf8().constData());
+    m_configFile = persistedConfig;
+    applyWatchdogCommand();
   }
 #endif
 
@@ -154,17 +182,17 @@ void DaemonApp::run(QThread &daemonThread)
 
 int DaemonApp::daemonLoop()
 {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   // Runs the daemon through the Windows service controller, which controls the program lifecycle.
   return ArchDaemonWindows::runDaemon([this]() { return mainLoop(); });
-#elif SYSAPI_UNIX
+#else
   return mainLoop();
 #endif
 }
 
 int DaemonApp::mainLoop()
 {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   if (m_pWatchdog == nullptr) {
     LOG_ERR("watchdog not initialized");
     return s_exitFailed;
@@ -173,7 +201,7 @@ int DaemonApp::mainLoop()
 #endif
 
   try {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
     // Install the platform event queue to handle service stop events.
     // This must be done on the same thread as the event loop, otherwise the service stop
     // request will not add the quit event to the event queue, and the service won't stop.
@@ -193,7 +221,7 @@ int DaemonApp::mainLoop()
 
   LOG_INFO("daemon is stopping");
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   try {
     LOG_DEBUG("stopping process watchdog");
     m_pWatchdog->stop();
@@ -221,7 +249,7 @@ void DaemonApp::setForeground()
 
 void DaemonApp::initLogging()
 {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   if (!m_foreground) {
     // Only use MS debug outputter when the process is daemonized, since stdout won't be accessible
     // in that case, but is accessible when running in the foreground.
@@ -235,7 +263,7 @@ void DaemonApp::initLogging()
 
 void DaemonApp::showConsole()
 {
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   // The daemon bin is compiled using the Win32 subsystem which works best for Windows services,
   // so when running as a foreground process we need to allocate a console (or we won't see output).
   // It is important to do this inside the arg check loop so that we can attach console ahead

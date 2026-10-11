@@ -5,11 +5,12 @@
  */
 
 #include "LogWidget.h"
-#include "common/PlatformInfo.h"
 
 #include <gui/Logger.h>
+#include <gui/StyleUtils.h>
 
 #include <QPlainTextEdit>
+#include <QScrollBar>
 #include <QVBoxLayout>
 
 LogWidget::LogWidget(QWidget *parent) : QWidget{parent}, m_textLog{new QPlainTextEdit(this)}
@@ -17,14 +18,7 @@ LogWidget::LogWidget(QWidget *parent) : QWidget{parent}, m_textLog{new QPlainTex
   m_textLog->setReadOnly(true);
   m_textLog->setMaximumBlockCount(10000);
   m_textLog->setLineWrapMode(QPlainTextEdit::NoWrap);
-
-  // setup the log font
-  m_textLog->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-  if (deskflow::platform::isMac()) {
-    auto f = m_textLog->font();
-    f.setPixelSize(12);
-    m_textLog->setFont(f);
-  }
+  m_textLog->setFont(fixedFont());
 
   auto layout = new QVBoxLayout;
   layout->setContentsMargins(0, 0, 0, 0);
@@ -62,4 +56,10 @@ void LogWidget::findPrevious(const QString &text)
     m_textLog->moveCursor(QTextCursor::End);
     m_textLog->find(text, QTextDocument::FindBackward);
   }
+}
+
+void LogWidget::scrollToBottom() const
+{
+  auto sb = m_textLog->verticalScrollBar();
+  sb->setValue(sb->maximum());
 }

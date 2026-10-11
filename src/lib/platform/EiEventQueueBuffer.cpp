@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2024 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2024 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2022 Red Hat, Inc.
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -62,7 +62,7 @@ void EiEventQueueBuffer::waitForEvent(double msTimeout)
       // supposed to be short-lived only. So instead, we create an nullptr-data
       // kSystemEvent whenever there's data on the fd, shove that event
       // into our event queue and once we process the event (see
-      // getEvent()), the EiScreen will call ei_dispatch() and process
+      // getEvent()), the EiComputer will call ei_dispatch() and process
       // all actual pending ei events. In theory this means that a
       // flood of ei events could starve the events added with
       // addEvents() but let's hope it doesn't come to that.
@@ -77,7 +77,7 @@ void EiEventQueueBuffer::waitForEvent(double msTimeout)
       while ((result = read(m_pipeRead, buf, sizeof(buf)) > 0)) {
         total += result;
       }
-      LOG_DEBUG2("event queue read result: %d (total drained: %zd)", result, total);
+      LOG_VERBOSE("event queue read result: %d (total drained: %zd)", result, total);
     }
   }
   Thread::testCancel();
@@ -96,7 +96,7 @@ IEventQueueBuffer::Type EiEventQueueBuffer::getEvent(Event &event, uint32_t &dat
   // But this makes locking more awkward and libei isn't really designed to
   // keep calling ei_dispatch() while we hold a bunch of event refs. So instead
   // we just have a "something happened" event on the ei fd and the rest is
-  // handled by the EiScreen.
+  // handled by the EiComputer.
   //
   std::scoped_lock lock{m_mutex};
   auto pair = m_queue.front();
@@ -120,7 +120,7 @@ bool EiEventQueueBuffer::addEvent(uint32_t dataID)
 
   // tickle the pipe so our read thread wakes up
   auto result = write(m_pipeWrite, "!", 1);
-  LOG_DEBUG2("event queue write result: %d", result);
+  LOG_VERBOSE("event queue write result: %d", result);
 
   return true;
 }

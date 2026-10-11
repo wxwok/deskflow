@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -45,7 +45,7 @@ public:
   /*!
   Dequeues and dispatches events until the kQuit event is found.
   */
-  virtual void loop() = 0;
+  virtual int loop() = 0;
 
   //! Set the buffer
   /*!
@@ -67,8 +67,8 @@ public:
   Looks up the dispatcher for the event's target and invokes it.
   Returns true iff a dispatcher exists for the target.
 
-  The caller must ensure that the target of the event is not removed by removeHandler() or
-  removeHandlers().
+  The handler may unregister itself while running. The event target object must remain alive until
+  the handler starts.
   */
   virtual bool dispatchEvent(const Event &event) = 0;
 

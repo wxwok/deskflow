@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -16,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <set>
 
@@ -35,7 +36,7 @@ public:
   EventQueue &operator=(EventQueue &&) = delete;
 
   // IEventQueue overrides
-  void loop() override;
+  int loop() override;
   void adoptBuffer(IEventQueueBuffer *) override;
   bool getEvent(Event &event, double timeout = -1.0) override;
   bool dispatchEvent(const Event &event) override;
@@ -50,7 +51,7 @@ public:
   void waitForReady() const override;
 
 private:
-  const EventHandler *getHandler(EventTypes type, void *target) const;
+  std::optional<EventHandler> getHandler(EventTypes type, void *target) const;
   uint32_t saveEvent(Event &&event);
   Event removeEvent(uint32_t eventID);
   bool hasTimerExpired(Event &event);

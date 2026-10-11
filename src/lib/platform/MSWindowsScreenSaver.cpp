@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -12,7 +12,7 @@
 #include "base/Log.h"
 #include "base/TMethodJob.h"
 #include "mt/Thread.h"
-#include "platform/MSWindowsScreen.h"
+#include "platform/MSWindowsComputer.h"
 
 #include <malloc.h>
 #include <tchar.h>
@@ -71,7 +71,7 @@ bool MSWindowsScreenSaver::checkStarted(UINT msg, WPARAM wParam, LPARAM lParam)
   // we first check that the screen saver is indeed active
   // before watching for it to stop.
   if (!isActive()) {
-    LOG_DEBUG2("can't open screen saver desktop");
+    LOG_VERBOSE("can't open screen saver desktop");
     return false;
   }
 
@@ -157,7 +157,7 @@ BOOL CALLBACK MSWindowsScreenSaver::killScreenSaverFunc(HWND hwnd, LPARAM arg)
 {
   if (IsWindowVisible(hwnd)) {
     HINSTANCE instance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
-    if (instance != MSWindowsScreen::getWindowInstance()) {
+    if (instance != MSWindowsComputer::getWindowInstance()) {
       PostMessage(hwnd, WM_CLOSE, 0, 0);
       *reinterpret_cast<bool *>(arg) = true;
     }

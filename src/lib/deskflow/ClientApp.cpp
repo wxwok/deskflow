@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 - 2026 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -15,37 +15,33 @@
 #include "common/ExitCodes.h"
 #include "common/PlatformInfo.h"
 #include "common/Settings.h"
-#include "deskflow/Screen.h"
-#include "deskflow/ScreenException.h"
+#include "deskflow/Computer.h"
+#include "deskflow/DisplayException.h"
+#include "deskflow/ipc/CoreIpc.h"
 #include "net/NetworkAddress.h"
 #include "net/SocketException.h"
 #include "net/SocketMultiplexer.h"
 #include "net/TCPSocketFactory.h"
 
-#if WINAPI_MSWINDOWS
-#include "platform/MSWindowsScreen.h"
+#if defined(Q_OS_WIN)
+#include "platform/MSWindowsComputer.h"
 #endif
 
-#include <QFileInfo> // Must include before XWindowsScreen to avoid conflicts with xlib.h
+#include <QFileInfo> // Must include before XWindowsComputer to avoid conflicts with xlib.h
 
 #if WINAPI_XWINDOWS
-#include "platform/XWindowsScreen.h"
+#include "platform/XWindowsComputer.h"
 #endif
 
 #if WINAPI_LIBEI
-#include "platform/EiScreen.h"
+#include "platform/EiComputer.h"
 #endif
 
-#if WINAPI_CARBON
-#include "base/TMethodJob.h"
-#include "mt/Thread.h"
-#include "platform/OSXCocoaApp.h"
-#include "platform/OSXScreen.h"
+#if defined(Q_OS_MACOS)
+#include "platform/OSXComputer.h"
 #endif
 
 #include <memory>
-
-constexpr static auto s_retryTime = 1.0;
 
 ClientApp::ClientApp(IEventQueue *events, const QString &processName) : App(events, processName)
 {
@@ -91,7 +87,7 @@ void ClientApp::parseArgs()
       bye(s_exitFailed);
     }
 
-    LOG_NOTE("configured %zu server address(es)", static_cast<size_t>(m_serverAddresses.size()));
+    LOG_INFO("configured %zu server address(es)", static_cast<size_t>(m_serverAddresses.size()));
   }
 }
 
@@ -102,59 +98,53 @@ const char *ClientApp::daemonName() const
   return "deskflow-client";
 }
 
-deskflow::Screen *ClientApp::createScreen()
+deskflow::Computer *ClientApp::createComputer()
 {
-#if WINAPI_MSWINDOWS
-  return new deskflow::Screen(
-      new MSWindowsScreen(
-          false, Settings::value(Settings::Core::UseHooks).toBool(), getEvents(),
-          Settings::value(Settings::Client::LanguageSync).toBool()
-      ),
-      getEvents()
-  );
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+  const auto languageSync = Settings::value(Settings::Client::LanguageSync).toBool();
+  LOG_INFO("keyboard language sync is %s", languageSync ? "enabled" : "disabled");
 #endif
 
-#if defined(WINAPI_XWINDOWS) or defined(WINAPI_LIBEI)
+#if defined(Q_OS_WIN)
+  return new deskflow::Computer(
+      new MSWindowsComputer(false, Settings::value(Settings::Core::UseHooks).toBool(), getEvents(), languageSync),
+      getEvents()
+  );
+#elif defined(Q_OS_MACOS)
+  return new deskflow::Computer(new OSXComputer(getEvents(), false, languageSync), getEvents());
+#else
   if (deskflow::platform::isWayland()) {
 #if WINAPI_LIBEI
-    LOG_INFO("using ei screen for wayland");
-    return new deskflow::Screen(new deskflow::EiScreen(false, getEvents(), true), getEvents());
+    LOG_INFO("detected wayland platform");
+    return new deskflow::Computer(new deskflow::EiComputer(false, getEvents(), true), getEvents());
 #else
     throw XNoEiSupport();
 #endif
   }
-#endif
-
 #if WINAPI_XWINDOWS
-  LOG_INFO("using legacy x windows screen");
-  return new deskflow::Screen(
-      new XWindowsScreen(qPrintable(Settings::value(Settings::Core::Display).toString()), false, getEvents()),
+  LOG_INFO("detected X11 platform");
+  return new deskflow::Computer(
+      new XWindowsComputer(qPrintable(Settings::value(Settings::Core::Display).toString()), false, getEvents()),
       getEvents()
   );
-
 #endif
-
-#if WINAPI_CARBON
-  return new deskflow::Screen(
-      new OSXScreen(getEvents(), false, Settings::value(Settings::Client::LanguageSync).toBool()), getEvents()
-  );
-#endif
+#endif // end os check
 }
 
-deskflow::Screen *ClientApp::openClientScreen()
+deskflow::Computer *ClientApp::openClientComputer()
 {
-  deskflow::Screen *screen = createScreen();
-  getEvents()->addHandler(EventTypes::ScreenError, screen->getEventTarget(), [this](const auto &) {
-    handleScreenError();
+  deskflow::Computer *computer = createComputer();
+  getEvents()->addHandler(EventTypes::ComputerError, computer->getEventTarget(), [this](const auto &) {
+    handleComputerError();
   });
-  return screen;
+  return computer;
 }
 
-void ClientApp::closeClientScreen(deskflow::Screen *screen)
+void ClientApp::closeClientComputer(deskflow::Computer *computer)
 {
-  if (screen != nullptr) {
-    getEvents()->removeHandler(EventTypes::ScreenError, screen->getEventTarget());
-    delete screen;
+  if (computer != nullptr) {
+    getEvents()->removeHandler(EventTypes::ComputerError, computer->getEventTarget());
+    delete computer;
   }
 }
 
@@ -170,15 +160,17 @@ void ClientApp::handleClientRestart(const Event &, EventQueueTimer *timer)
 
 void ClientApp::scheduleClientRestart(double retryTime)
 {
-  // install a timer and handler to retry later
   LOG_DEBUG("retry in %.0f seconds", retryTime);
+  ipcSendToClient("retryIn", QString::number(retryTime, 'f', 0));
+  // install a timer and handler to retry later
   EventQueueTimer *timer = getEvents()->newOneShotTimer(retryTime, nullptr);
   getEvents()->addHandler(EventTypes::Timer, timer, [this, timer](const auto &e) { handleClientRestart(e, timer); });
 }
 
 void ClientApp::handleClientConnected()
 {
-  LOG_IPC("connected to server");
+  LOG_DEBUG("connected to server");
+  ipcSendConnectionState(deskflow::core::ConnectionState::Connected);
   // Reset server index on successful connection
   m_currentServerIndex = 0;
   m_lastServerAddressIndex = 0;
@@ -190,9 +182,9 @@ void ClientApp::handleClientFailed(const Event &e)
     // Try next resolved address for current hostname
     std::unique_ptr<Client::FailInfo> info(static_cast<Client::FailInfo *>(e.getData()));
 
-    LOG_WARN("failed to connect to server=%s, trying next resolved address", info->m_what.c_str());
+    LOG_WARN("failed to connect to server=%s, trying next resolved address", qPrintable(info->m_what));
     if (!m_suspended) {
-      scheduleClientRestart(s_retryTime);
+      scheduleClientRestart(retryTime());
     }
   } else {
     // All resolved addresses exhausted, try next server in list
@@ -204,9 +196,9 @@ void ClientApp::handleClientFailed(const Event &e)
       handleClientRefused(e);
     } else {
       std::unique_ptr<Client::FailInfo> info(static_cast<Client::FailInfo *>(e.getData()));
-      LOG_WARN("failed to connect to server=%s, trying next server in list", info->m_what.c_str());
+      LOG_WARN("failed to connect to server=%s, trying next server in list", qPrintable(info->m_what));
       if (!m_suspended) {
-        scheduleClientRestart(s_retryTime);
+        scheduleClientRestart(retryTime());
       }
     }
   }
@@ -217,27 +209,30 @@ void ClientApp::handleClientRefused(const Event &e)
   std::unique_ptr<Client::FailInfo> info(static_cast<Client::FailInfo *>(e.getData()));
 
   if (!info->m_retry) {
-    LOG_ERR("failed to connect to server: %s", info->m_what.c_str());
+    LOG_ERR("failed to connect to server: %s", qPrintable(info->m_what));
     getEvents()->addEvent(Event(EventTypes::Quit));
   } else {
-    LOG_WARN("failed to connect to server: %s", info->m_what.c_str());
+    LOG_WARN("failed to connect to server: %s", qPrintable(info->m_what));
     if (!m_suspended) {
-      scheduleClientRestart(s_retryTime);
+      scheduleClientRestart(retryTime());
+      m_retryCount++;
     }
   }
 }
 
 void ClientApp::handleClientDisconnected()
 {
-  LOG_IPC("disconnected from server");
+  m_retryCount = 0;
+  LOG_DEBUG("disconnected from server");
+  ipcSendConnectionState(deskflow::core::ConnectionState::Disconnected);
   if (!m_suspended) {
-    scheduleClientRestart(s_retryTime);
+    scheduleClientRestart(retryTime());
   }
 }
 
-Client *ClientApp::openClient(const std::string &name, const NetworkAddress &address, deskflow::Screen *screen)
+Client *ClientApp::openClient(const std::string &name, const NetworkAddress &address, deskflow::Computer *computer)
 {
-  auto *client = new Client(getEvents(), name, address, getSocketFactory(), screen);
+  auto *client = new Client(getEvents(), name, address, getSocketFactory(), computer);
 
   try {
     getEvents()->addHandler(EventTypes::ClientConnected, client->getEventTarget(), [this](const auto &) {
@@ -267,56 +262,58 @@ void ClientApp::closeClient(Client *client)
     return;
   }
   using enum EventTypes;
-  getEvents()->removeHandler(ClientConnected, client);
-  getEvents()->removeHandler(ClientConnectionFailed, client);
-  getEvents()->removeHandler(ClientConnectionRefused, client);
-  getEvents()->removeHandler(ClientDisconnected, client);
+  auto *target = client->getEventTarget();
+  getEvents()->removeHandler(ClientConnected, target);
+  getEvents()->removeHandler(ClientConnectionFailed, target);
+  getEvents()->removeHandler(ClientConnectionRefused, target);
+  getEvents()->removeHandler(ClientDisconnected, target);
   delete client;
 }
 
 bool ClientApp::startClient()
 {
-  double retryTime;
-  deskflow::Screen *clientScreen = nullptr;
+  deskflow::Computer *clientComputer = nullptr;
   try {
-    if (m_clientScreen == nullptr) {
-      clientScreen = openClientScreen();
+    if (m_clientComputer == nullptr) {
+      clientComputer = openClientComputer();
       m_client = openClient(
           Settings::value(Settings::Core::ComputerName).toString().toStdString(), getCurrentServerAddress(),
-          clientScreen
+          clientComputer
       );
-      m_clientScreen = clientScreen;
-      LOG_NOTE("started client");
+      m_clientComputer = clientComputer;
+      LOG_INFO("started client");
     }
 
     m_client->setServerAddress(getCurrentServerAddress());
     m_client->connect(m_lastServerAddressIndex);
 
     return true;
-  } catch (ScreenUnavailableException &e) {
-    LOG_WARN("secondary screen unavailable: %s", e.what());
-    closeClientScreen(clientScreen);
-    retryTime = e.getRetryTime();
-  } catch (ScreenOpenFailureException &e) {
+  } catch (X11DisplayUnavailableException &e) {
+    LOG_WARN("secondary computer unavailable: %s", e.what());
+    closeClientComputer(clientComputer);
+  } catch (DisplayOpenFailureException &e) {
     LOG_CRIT("failed to start client: %s", e.what());
-    closeClientScreen(clientScreen);
+    closeClientComputer(clientComputer);
+    m_retryCount = 0;
     return false;
   } catch (BaseException &e) {
     LOG_CRIT("failed to start client: %s", e.what());
-    closeClientScreen(clientScreen);
+    closeClientComputer(clientComputer);
+    m_retryCount = 0;
     return false;
   }
 
-  scheduleClientRestart(retryTime);
+  scheduleClientRestart(retryTime());
   return true;
 }
 
 void ClientApp::stopClient()
 {
   closeClient(m_client);
-  closeClientScreen(m_clientScreen);
+  closeClientComputer(m_clientComputer);
   m_client = nullptr;
-  m_clientScreen = nullptr;
+  m_clientComputer = nullptr;
+  m_retryCount = 0;
 }
 
 int ClientApp::mainLoop()
@@ -326,31 +323,19 @@ int ClientApp::mainLoop()
   setSocketMultiplexer(std::make_unique<SocketMultiplexer>());
 
   // start client, etc
-  appUtil().startNode();
+  startNode();
 
   // run event loop.  if startClient() failed we're supposed to retry
   // later.  the timer installed by startClient() will take care of
   // that.
-
-#if WINAPI_CARBON
-
-  Thread thread(new TMethodJob<ClientApp>(this, &ClientApp::runEventsLoop, nullptr));
-
-  // wait until carbon loop is ready
-  OSXScreen *screen = dynamic_cast<OSXScreen *>(m_clientScreen->getPlatformScreen());
-  screen->waitForCarbonLoop();
-
-  runCocoaApp();
-#else
-  getEvents()->loop();
-#endif
+  int exitCode = getEvents()->loop();
 
   // close down
   LOG_DEBUG("stopping client");
   stopClient();
-  LOG_NOTE("stopped client");
+  LOG_INFO("stopped client");
 
-  return s_exitSuccess;
+  return exitCode;
 }
 
 int ClientApp::start()
@@ -392,7 +377,7 @@ void ClientApp::startNode()
 {
   // start the client.  if this return false then we've failed and
   // we shouldn't retry.
-  LOG_DEBUG1("starting client");
+  LOG_VERBOSE("starting client");
   if (!startClient()) {
     bye(s_exitFailed);
   }
@@ -401,4 +386,21 @@ void ClientApp::startNode()
 ISocketFactory *ClientApp::getSocketFactory() const
 {
   return new TCPSocketFactory(getEvents(), getSocketMultiplexer());
+}
+
+double ClientApp::retryTime() const
+{
+  if (!Settings::value(Settings::Client::DynamicConnectionRetry).toBool() || m_retryCount < 300) // 5 minutes
+    return 1;
+  if (m_retryCount < 360) // 5 minutes
+    return 5;
+  if (m_retryCount < 390) // 5 minutes
+    return 10;
+  if (m_retryCount < 410) // 10 minutes
+    return 30;
+  if (m_retryCount < 420) // 10 minutes
+    return 60;
+  if (m_retryCount < 430) // 20 minutes
+    return 120;
+  return 300;
 }

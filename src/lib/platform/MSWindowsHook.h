@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2011 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -61,6 +61,9 @@ public:
   void setZone(int32_t x, int32_t y, int32_t w, int32_t h, int32_t jumpZoneSize);
 
   void setMode(EHookMode mode);
+
+  //! Copy the hook's physical key state; false until it has observed an event.
+  static bool getPhysicalKeyState(BYTE keys[256]);
 
   static EHookResult install();
 

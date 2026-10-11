@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -431,7 +431,7 @@ void XWindowsScreenSaver::addWatchXScreenSaver(Window window)
     }
     if (!error) {
       // if successful then add the window to our list
-      m_watchWindows.insert(std::make_pair(window, attr.your_event_mask));
+      m_watchWindows.try_emplace(window, attr.your_event_mask);
     }
   }
 }

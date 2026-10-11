@@ -10,11 +10,21 @@ configure_file(Constants.h.in Constants.h @ONLY)
 configure_file(VersionInfo.h.in VersionInfo.h @ONLY)
 
 add_library(common STATIC
+  Action.cpp
+  Action.h
   Coordinate.h
   Enums.h
   ExitCodes.h
+  Hotkey.cpp
+  Hotkey.h
   I18N.h
   I18N.cpp
+  KeyModifierID.h
+  KeyboardModifier.h
+  KeySequence.h
+  KeySequence.cpp
+  LogLevel.h
+  NetworkProtocol.h
   PlatformInfo.h
   Settings.h
   Settings.cpp
@@ -26,3 +36,9 @@ add_library(common STATIC
 )
 
 target_link_libraries(common PUBLIC Qt6::Core)
+
+target_include_directories(common
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/lib>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/lib>
+)

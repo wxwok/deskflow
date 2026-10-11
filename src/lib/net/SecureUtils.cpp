@@ -14,6 +14,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include <QFile>
 #include <algorithm>
 #include <filesystem>
 #include <stdexcept>
@@ -66,13 +67,11 @@ void generatePemSelfSignedCert(const QString &path, int keyLength)
 {
   auto expirationDays = 365;
 
-  auto *privateKey = EVP_PKEY_new();
+  auto *privateKey = EVP_RSA_gen(keyLength);
   if (!privateKey) {
-    throw std::runtime_error("could not allocate private key for certificate");
+    throw std::runtime_error("failed to generate a " + std::to_string(keyLength) + "bit key for certificate");
   }
   auto privateKeyFree = finally([privateKey]() { EVP_PKEY_free(privateKey); });
-
-  privateKey = EVP_RSA_gen(keyLength);
 
   auto *cert = X509_new();
   if (!cert) {
@@ -85,14 +84,20 @@ void generatePemSelfSignedCert(const QString &path, int keyLength)
   X509_gmtime_adj(X509_get_notAfter(cert), expirationDays * 24 * 3600);
   X509_set_pubkey(cert, privateKey);
 
-  auto *name = X509_get_subject_name(cert);
+  auto *name = X509_NAME_new();
+  if (!name) {
+    throw std::runtime_error("could not allocate subject name");
+  }
   X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char *>("Deskflow"), -1, -1, 0);
+  X509_set_subject_name(cert, name);
   X509_set_issuer_name(cert, name);
+  X509_NAME_free(name);
 
   X509_sign(cert, privateKey, EVP_sha256());
+  const QFile file(path);
+  const std::filesystem::path fsPath = file.filesystemFileName();
 
-  const std::filesystem::path fsPath = path.toStdString();
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   auto fp = _wfopen(fsPath.native().c_str(), L"w");
 #else
   auto fp = std::fopen(fsPath.native().c_str(), "w");

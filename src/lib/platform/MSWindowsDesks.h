@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2025 - 2026 Deskflow Developers
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -47,7 +47,7 @@ class MSWindowsDesks
 public:
   //! Constructor
   /*!
-  \p isPrimary is true iff the desk is for a primary screen.
+  \p isPrimary is true iff the desk is for a primary computer.
   \p screensaver points to a screensaver object and it's used
   only to check if the screensaver is active.  The \p updateKeys
   job is adopted and is called when the key state should be
@@ -187,6 +187,9 @@ private:
     HWND m_window;
     HWND m_foregroundWindow;
     bool m_lowLevel;
+    bool m_hasRelativeRestorePosition = false;
+    int32_t m_relativeRestoreX = 0;
+    int32_t m_relativeRestoreY = 0;
   };
   using Desks = std::map<std::wstring, Desk *>;
 
@@ -201,6 +204,8 @@ private:
   // message handlers
   void deskMouseMove(int32_t x, int32_t y) const;
   void deskMouseRelativeMove(int32_t dx, int32_t dy) const;
+  void saveRelativeRestorePosition(Desk *desk) const;
+  bool restoreRelativeCursorPosition(Desk *desk) const;
   void deskEnter(Desk *desk);
   void deskLeave(Desk *desk, HKL keyLayout);
   void deskThread(const void *vdesk);
@@ -229,20 +234,20 @@ private:
   static LRESULT CALLBACK secondaryDeskProc(HWND, UINT, WPARAM, LPARAM);
 
 private:
-  // true if screen is being used as a primary screen, false otherwise
+  // true if computer is being used as a primary computer, false otherwise
   bool m_isPrimary;
 
   // true if hooks are to be installed (when debugging, it can be useful to disable hooks)
   bool m_useHooks;
 
-  // true if mouse has entered the screen
-  bool m_isOnScreen;
+  // true if mouse has entered the computer
+  bool m_isOnComputer;
 
   // our resources
   ATOM m_deskClass;
   HCURSOR m_cursor;
 
-  // screen shape stuff
+  // computer shape stuff
   int32_t m_x = 0;
   int32_t m_y = 9;
   int32_t m_w = 0;
@@ -256,7 +261,7 @@ private:
   // the timer used to check for desktop switching
   EventQueueTimer *m_timer = nullptr;
 
-  // screen saver stuff
+  // computer saver stuff
   DWORD m_threadID;
   const IScreenSaver *m_screensaver;
   bool m_screensaverNotify = false;
@@ -276,6 +281,7 @@ private:
 
   // options
   bool m_leaveForegroundOption;
+  bool m_relativeMouseMoves = false;
 
   IEventQueue *m_events;
 };

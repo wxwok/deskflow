@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2026 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2025 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2025 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -18,10 +18,10 @@
 #include "base/LogOutputters.h"
 #include "common/Constants.h"
 #include "deskflow/App.h"
+#include "deskflow/Computer.h"
 #include "deskflow/DeskflowException.h"
-#include "deskflow/Screen.h"
 #include "mt/Thread.h"
-#include "platform/MSWindowsScreen.h"
+#include "platform/MSWindowsComputer.h"
 
 #include <Windows.h>
 #include <conio.h>
@@ -108,7 +108,7 @@ int AppUtilWindows::run()
   // record window instance for tray icon, etc
   ArchMiscWindows::setInstanceWin32(GetModuleHandle(nullptr));
 
-  MSWindowsScreen::init(ArchMiscWindows::instanceWin32());
+  MSWindowsComputer::init(ArchMiscWindows::instanceWin32());
   Thread::getCurrentThread().setPriority(-14);
 
   StartupFunc startup;
@@ -124,11 +124,6 @@ int AppUtilWindows::run()
 AppUtilWindows &AppUtilWindows::instance()
 {
   return (AppUtilWindows &)AppUtil::instance();
-}
-
-void AppUtilWindows::startNode()
-{
-  app().startNode();
 }
 
 std::vector<std::string> AppUtilWindows::getKeyboardLayoutList()

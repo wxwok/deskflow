@@ -44,7 +44,7 @@ jobs:
       - name: Install container dependencies
         run: |
           apt update -qqq > /dev/null
-          apt install -qqq git curl unzip gcovr > /dev/null
+          apt install -qqq git curl unzip gcovr dirmngr gpg > /dev/null
 
       - name: Fancy Checkout
         uses: sithlord48/fancy-checkout@v2
@@ -55,7 +55,7 @@ jobs:
           like: "debian"
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v8
 
       - name: Configure
         run: |
@@ -91,7 +91,7 @@ jobs:
           echo "csv=$paths" >> $GITHUB_OUTPUT
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@v8
         with:
           args: >
             -Dsonar.coverageReportPaths=${{ steps.coverage-paths.outputs.csv }}

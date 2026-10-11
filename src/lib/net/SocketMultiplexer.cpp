@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -80,7 +80,7 @@ void SocketMultiplexer::addSocket(ISocket *socket, ISocketMultiplexerJob *job)
     // serviceThread().
     JobCursor j = m_socketJobs.insert(m_socketJobs.end(), job);
     m_update = true;
-    m_socketJobMap.insert(std::make_pair(socket, j));
+    m_socketJobMap.try_emplace(socket, j);
   } else {
     if (JobCursor j = i->second; *j != job) {
       delete *j;

@@ -1,6 +1,6 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -388,7 +388,7 @@ void ArchMultithreadPosix::testCancelThread()
   ArchThreadImpl *thread = nullptr;
   {
     std::scoped_lock lock{m_threadMutex};
-    thread = findNoRef(pthread_self());
+    thread = findNoRefOrInsert(pthread_self());
   }
   // test cancel on thread
   testCancelThreadImpl(thread);
@@ -402,7 +402,7 @@ bool ArchMultithreadPosix::wait(ArchThread target, double timeout)
   {
     std::scoped_lock lock{m_threadMutex};
     // find current thread
-    self = findNoRef(pthread_self());
+    self = findNoRefOrInsert(pthread_self());
     // ignore wait if trying to wait on ourself
     if (target == self) {
       return false;
@@ -517,9 +517,23 @@ void ArchMultithreadPosix::startSignalHandler()
 
 ArchThreadImpl *ArchMultithreadPosix::find(pthread_t thread)
 {
-  ArchThreadImpl *impl = findNoRef(thread);
+  ArchThreadImpl *impl = findNoRefOrInsert(thread);
   if (impl != nullptr) {
     refThread(impl);
+  }
+  return impl;
+}
+
+ArchThreadImpl *ArchMultithreadPosix::findNoRefOrInsert(pthread_t thread)
+{
+  ArchThreadImpl *impl = findNoRef(thread);
+  if (impl == nullptr) {
+    // create thread for calling thread which isn't in our list and
+    // add it to the list. this can happen when a foreign thread
+    // (e.g. a Qt thread) calls into the arch layer.
+    impl = new ArchThreadImpl;
+    impl->m_thread = thread;
+    insert(impl);
   }
   return impl;
 }

@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2004 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -46,7 +46,7 @@ ClientListener::ClientListener(
     m_socketFactory.reset();
     throw;
   }
-  LOG_DEBUG1("listening for clients");
+  LOG_VERBOSE("listening for clients");
 }
 
 ClientListener::~ClientListener()
@@ -82,14 +82,14 @@ void ClientListener::start()
   });
 
   // bind listen address
-  LOG_DEBUG1("binding listen socket");
+  LOG_VERBOSE("binding listen socket");
   m_listen->bind(m_address);
 }
 
 void ClientListener::stop()
 {
   using enum EventTypes;
-  LOG_DEBUG1("stop listening for clients");
+  LOG_VERBOSE("stop listening for clients");
 
   // discard already connected clients
   for (auto index = m_newClients.begin(); index != m_newClients.end(); ++index) {
@@ -138,6 +138,14 @@ void ClientListener::handleClientConnecting()
       [this, rawSocketPointer](const auto &) { handleClientAccepted(rawSocketPointer); }
   );
 
+  m_events->addHandler(
+      EventTypes::ClientListenerDisconnectedOnAccept, rawSocketPointer->getEventTarget(),
+      [this, rawSocketPointer](const auto &) {
+        LOG_DEBUG("disconnected client before accept");
+        removeClientSocket(rawSocketPointer);
+      }
+  );
+
   // When using non SSL, server accepts clients immediately, while SSL
   // has to call secure accept which may require retry
   if (m_securityLevel == SecurityLevel::PlainText) {
@@ -147,7 +155,7 @@ void ClientListener::handleClientConnecting()
 
 void ClientListener::handleClientAccepted(IDataSocket *socket)
 {
-  LOG_NOTE("accepted client connection");
+  LOG_INFO("accepted client connection");
 
   // filter socket messages, including a packetizing filter
   deskflow::IStream *stream = new PacketStreamFilter(m_events, socket, false);
@@ -163,7 +171,15 @@ void ClientListener::handleClientAccepted(IDataSocket *socket)
     handleUnknownClient(client);
   });
   m_events->addHandler(EventTypes::ClientProxyUnknownFailure, client, [this, client](const auto &) {
+    auto *filter = dynamic_cast<StreamFilter *>(client->getStream());
+    IDataSocket *socket = nullptr;
+    if (filter && !filter->adoptedStream()) {
+      socket = dynamic_cast<IDataSocket *>(filter->getStream());
+    }
     removeUnknownClient(client);
+    if (socket) {
+      removeClientSocket(socket);
+    }
   });
 }
 
@@ -205,12 +221,18 @@ void ClientListener::handleClientDisconnected(ClientProxy *client)
       // we know which socket we no longer need
       auto *socket = static_cast<IDataSocket *>(client->getStream());
       delete client;
-      m_clientSockets.erase(socket);
-      delete socket;
+      removeClientSocket(socket);
 
       break;
     }
   }
+}
+
+void ClientListener::removeClientSocket(IDataSocket *socket)
+{
+  m_clientSockets.erase(socket);
+  m_events->removeHandlers(socket->getEventTarget());
+  delete socket;
 }
 
 void ClientListener::cleanupListenSocket()

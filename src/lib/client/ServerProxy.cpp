@@ -1,7 +1,7 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
  * SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
- * SPDX-FileCopyrightText: (C) 2012 - 2016 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2016, 2026 Synergy App Ltd
  * SPDX-FileCopyrightText: (C) 2002 Chris Schoeneman
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
@@ -54,6 +54,7 @@ ServerProxy::~ServerProxy()
 {
   setKeepAliveRate(-1.0);
   m_events->removeHandler(EventTypes::StreamInputReady, m_stream->getEventTarget());
+  m_events->removeHandler(EventTypes::ClipboardSending, this);
 }
 
 void ServerProxy::resetKeepAliveAlarm()
@@ -84,12 +85,12 @@ void ServerProxy::handleData()
     // verify we got an entire code
     if (n != 4) {
       LOG_ERR("incomplete message from server: %d bytes", n);
-      m_client->disconnect("incomplete message from server");
+      requestDisconnect("incomplete message from server");
       return;
     }
 
     // parse message
-    LOG_DEBUG2("msg from server: %c%c%c%c", code[0], code[1], code[2], code[3]);
+    LOG_VERBOSE("msg from server: %c%c%c%c", code[0], code[1], code[2], code[3]);
     try {
       switch ((this->*m_parser)(code)) {
         using enum ConnectionResult;
@@ -110,7 +111,7 @@ void ServerProxy::handleData()
     } catch (const BadClientException &e) {
       LOG_ERR("protocol error from server: %s", e.what());
       ProtocolUtil::writef(m_stream, kMsgEBad);
-      m_client->disconnect("invalid message from server");
+      requestDisconnect("invalid message from server");
       return;
     }
 
@@ -124,6 +125,7 @@ void ServerProxy::handleData()
 ServerProxy::ConnectionResult ServerProxy::parseHandshakeMessage(const uint8_t *code)
 {
   using enum ConnectionResult;
+  using enum deskflow::core::ConnectionRefusal;
 
   if (memcmp(code, kMsgQInfo, 4) == 0) {
     queryInfo();
@@ -137,8 +139,8 @@ ServerProxy::ConnectionResult ServerProxy::parseHandshakeMessage(const uint8_t *
     setOptions();
 
     // handshake is complete
-    m_parser = &ServerProxy::parseMessage;
-    checkMissedLanguages();
+    m_parser = &ServerProxy::handleMessage;
+
     m_client->handshakeComplete();
   }
 
@@ -158,8 +160,8 @@ ServerProxy::ConnectionResult ServerProxy::parseHandshakeMessage(const uint8_t *
 
   else if (memcmp(code, kMsgCClose, 4) == 0) {
     // server wants us to hangup
-    LOG_DEBUG1("recv close");
-    m_client->disconnect(nullptr);
+    LOG_VERBOSE("recv close");
+    requestDisconnect(nullptr);
     return Disconnect;
   }
 
@@ -168,33 +170,47 @@ ServerProxy::ConnectionResult ServerProxy::parseHandshakeMessage(const uint8_t *
     int32_t minor;
     ProtocolUtil::readf(m_stream, kMsgEIncompatible + 4, &major, &minor);
     LOG_ERR("server has incompatible version %d.%d", major, minor);
-    m_client->refuseConnection("server has incompatible version");
+    requestRefuseConnection(IncompatibleVersion, "server has incompatible version");
     return Disconnect;
   }
 
   else if (memcmp(code, kMsgEBusy, 4) == 0) {
     LOG_ERR("server already has a connected client with name \"%s\"", m_client->getName().c_str());
-    m_client->refuseConnection("server already has a connected client with our name");
+    requestRefuseConnection(AlreadyConnected, "server already has a connected client with our name");
     return Disconnect;
   }
 
   else if (memcmp(code, kMsgEUnknown, 4) == 0) {
     LOG_ERR("server refused client with name \"%s\"", m_client->getName().c_str());
-    m_client->refuseConnection("server refused client with our name");
+    requestRefuseConnection(UnknownClient, "server refused client with our name");
     return Disconnect;
   }
 
   else if (memcmp(code, kMsgEBad, 4) == 0) {
     LOG_ERR("server disconnected due to a protocol error");
-    m_client->refuseConnection("server reported a protocol error");
+    requestRefuseConnection(ProtocolError, "server reported a protocol error");
     return Disconnect;
-  } else if (memcmp(code, kMsgDLanguageSynchronisation, 4) == 0) {
-    setServerLanguages();
   } else {
     return Unknown;
   }
 
   return Okay;
+}
+
+ServerProxy::ConnectionResult ServerProxy::handleMessage(const uint8_t *code)
+{
+  const auto result = parseMessage(code);
+  if (result == ConnectionResult::Okay) {
+    // send a reply.  this is intended to work around a delay when
+    // running a linux server and an OS X (any BSD?) client.  the
+    // client waits to send an ACK (if the system control flag
+    // net.inet.tcp.delayed_ack is 1) in hopes of piggybacking it
+    // on a data packet.  we provide that packet here.  i don't
+    // know why a delayed ACK should cause the server to wait since
+    // TCP_NODELAY is enabled.
+    ProtocolUtil::writef(m_stream, kMsgCNoop);
+  }
+  return result;
 }
 
 ServerProxy::ConnectionResult ServerProxy::parseMessage(const uint8_t *code)
@@ -213,26 +229,14 @@ ServerProxy::ConnectionResult ServerProxy::parseMessage(const uint8_t *code)
     mouseWheel();
   }
 
-  else if (memcmp(code, kMsgDKeyDown, 4) == 0) {
+  else if (memcmp(code, kMsgDKeyDown1_1, 4) == 0) {
     uint16_t id = 0;
     uint16_t mask = 0;
     uint16_t button = 0;
-    ProtocolUtil::readf(m_stream, kMsgDKeyDown + 4, &id, &mask, &button);
-    LOG_DEBUG1("recv key down id=0x%08x, mask=0x%04x, button=0x%04x", id, mask, button);
+    ProtocolUtil::readf(m_stream, kMsgDKeyDown1_1 + 4, &id, &mask, &button);
+    LOG_VERBOSE("recv key down id=0x%08x, mask=0x%04x, button=0x%04x", id, mask, button);
 
     keyDown(id, mask, button, "");
-  }
-
-  else if (memcmp(code, kMsgDKeyDownLang, 4) == 0) {
-    std::string lang;
-    uint16_t id = 0;
-    uint16_t mask = 0;
-    uint16_t button = 0;
-
-    ProtocolUtil::readf(m_stream, kMsgDKeyDownLang + 4, &id, &mask, &button, &lang);
-    LOG_DEBUG1("recv key down id=0x%08x, mask=0x%04x, button=0x%04x, lang=\"%s\"", id, mask, button, lang.c_str());
-
-    keyDown(id, mask, button, lang);
   }
 
   else if (memcmp(code, kMsgDKeyUp, 4) == 0) {
@@ -247,8 +251,15 @@ ServerProxy::ConnectionResult ServerProxy::parseMessage(const uint8_t *code)
     mouseUp();
   }
 
-  else if (memcmp(code, kMsgDKeyRepeat, 4) == 0) {
-    keyRepeat();
+  else if (memcmp(code, kMsgDKeyRepeat1_1, 4) == 0) {
+    uint16_t id = 0;
+    uint16_t mask = 0;
+    uint16_t count = 0;
+    uint16_t button = 0;
+    ProtocolUtil::readf(m_stream, kMsgDKeyRepeat1_1 + 4, &id, &mask, &count, &button);
+    LOG_VERBOSE("recv key repeat id=0x%08x, mask=0x%04x, count=%d, button=0x%04x", id, mask, count, button);
+
+    keyRepeat(id, mask, count, button, "");
   }
 
   else if (memcmp(code, kMsgCKeepAlive, 4) == 0) {
@@ -297,39 +308,41 @@ ServerProxy::ConnectionResult ServerProxy::parseMessage(const uint8_t *code)
     setOptions();
   }
 
-  else if (memcmp(code, kMsgDSecureInputNotification, 4) == 0) {
-    secureInputNotification();
-  }
-
   else if (memcmp(code, kMsgCClose, 4) == 0) {
     // server wants us to hangup
-    LOG_DEBUG1("recv close");
-    m_client->disconnect(nullptr);
+    LOG_VERBOSE("recv close");
+    requestDisconnect(nullptr);
     return Disconnect;
   } else if (memcmp(code, kMsgEBad, 4) == 0) {
     LOG_ERR("server disconnected due to a protocol error");
-    m_client->disconnect("server reported a protocol error");
+    requestDisconnect("server reported a protocol error");
     return Disconnect;
   } else {
     return Unknown;
   }
-
-  // send a reply.  this is intended to work around a delay when
-  // running a linux server and an OS X (any BSD?) client.  the
-  // client waits to send an ACK (if the system control flag
-  // net.inet.tcp.delayed_ack is 1) in hopes of piggybacking it
-  // on a data packet.  we provide that packet here.  i don't
-  // know why a delayed ACK should cause the server to wait since
-  // TCP_NODELAY is enabled.
-  ProtocolUtil::writef(m_stream, kMsgCNoop);
 
   return Okay;
 }
 
 void ServerProxy::handleKeepAliveAlarm()
 {
-  LOG_NOTE("server is dead");
-  m_client->disconnect("server is not responding");
+  LOG_INFO("server is dead");
+  requestDisconnect("server is not responding");
+}
+
+void ServerProxy::requestDisconnect(const char *message)
+{
+  m_events->addEvent(Event(
+      EventTypes::ClientDisconnectRequested, m_stream->getEventTarget(),
+      new Client::DisconnectRequest(Client::DisconnectRequest::Kind::Disconnect, message)
+  ));
+}
+
+void ServerProxy::requestRefuseConnection(deskflow::core::ConnectionRefusal reason, const char *message)
+{
+  m_events->addEvent(Event(
+      EventTypes::ClientDisconnectRequested, m_stream->getEventTarget(), new Client::DisconnectRequest(reason, message)
+  ));
 }
 
 void ServerProxy::onInfoChanged()
@@ -344,7 +357,7 @@ void ServerProxy::onInfoChanged()
 
 bool ServerProxy::onGrabClipboard(ClipboardID id)
 {
-  LOG_DEBUG1("sending clipboard %d changed", id);
+  LOG_VERBOSE("sending clipboard %d changed", id);
   ProtocolUtil::writef(m_stream, kMsgCClipboard, id, m_seqNum);
   return true;
 }
@@ -373,7 +386,7 @@ void ServerProxy::flushCompressedMouse()
 
 void ServerProxy::sendInfo(const ClientInfo &info)
 {
-  LOG_DEBUG1("sending info shape=%d,%d %dx%d", info.m_x, info.m_y, info.m_w, info.m_h);
+  LOG_VERBOSE("sending info shape=%d,%d %dx%d", info.m_x, info.m_y, info.m_w, info.m_h);
   ProtocolUtil::writef(m_stream, kMsgDInfo, info.m_x, info.m_y, info.m_w, info.m_h, 0, info.m_mx, info.m_my);
 }
 
@@ -490,7 +503,7 @@ void ServerProxy::enter()
   uint16_t mask;
   uint32_t seqNum;
   ProtocolUtil::readf(m_stream, kMsgCEnter + 4, &x, &y, &seqNum, &mask);
-  LOG_DEBUG1("recv enter, %d,%d %d %04x", x, y, seqNum, mask);
+  LOG_VERBOSE("recv enter, %d,%d %d %04x", x, y, seqNum, mask);
 
   // discard old compressed mouse motion, if any
   m_compressMouse = false;
@@ -498,8 +511,6 @@ void ServerProxy::enter()
   m_dxMouse = 0;
   m_dyMouse = 0;
   m_seqNum = seqNum;
-  m_serverLanguage = "";
-  m_isUserNotifiedAboutLanguageSyncError = false;
 
   // forward
   m_client->enter(x, y, seqNum, static_cast<KeyModifierMask>(mask), false);
@@ -508,7 +519,7 @@ void ServerProxy::enter()
 void ServerProxy::leave()
 {
   // parse
-  LOG_DEBUG1("recv leave");
+  LOG_VERBOSE("recv leave");
 
   // send last mouse motion
   flushCompressedMouse();
@@ -520,24 +531,29 @@ void ServerProxy::leave()
 void ServerProxy::setClipboard()
 {
   // parse
-  static std::string dataCached;
   ClipboardID id;
   uint32_t seq;
 
-  auto r = ClipboardChunk::assemble(m_stream, dataCached, id, seq);
+  auto r = ClipboardChunk::assemble(
+      m_stream, m_clipboardDataCached, id, seq, m_clipboardChunkState, m_client->getMaximumClipboardReceiveSizeBytes()
+  );
 
   if (r == TransferState::Started) {
-    size_t size = ClipboardChunk::getExpectedSize();
-    LOG_DEBUG("receiving clipboard %d size=%d", id, size);
+    size_t size = ClipboardChunk::getExpectedSize(m_clipboardChunkState);
+    LOG_DEBUG("receiving clipboard %d size=%zu", id, size);
   } else if (r == TransferState::Finished) {
-    LOG_DEBUG("received clipboard %d size=%d", id, dataCached.size());
+    LOG_DEBUG("received clipboard %d size=%zu", id, m_clipboardDataCached.size());
 
     // forward
     Clipboard clipboard;
-    clipboard.unmarshall(dataCached, 0);
+    clipboard.unmarshall(m_clipboardDataCached, 0);
     m_client->setClipboard(id, &clipboard);
+    m_clipboardDataCached.clear();
+    m_clipboardDataCached.shrink_to_fit();
 
     LOG_INFO("clipboard was updated");
+  } else if (r == TransferState::Error) {
+    requestDisconnect("invalid clipboard data from server");
   }
 }
 
@@ -560,45 +576,25 @@ void ServerProxy::grabClipboard()
 
 void ServerProxy::keyDown(uint16_t id, uint16_t mask, uint16_t button, const std::string &lang)
 {
-  // get mouse up to date
   flushCompressedMouse();
-  setActiveServerLanguage(lang);
 
-  // translate
   KeyID id2 = translateKey(static_cast<KeyID>(id));
   KeyModifierMask mask2 = translateModifierMask(static_cast<KeyModifierMask>(mask));
   if (id2 != static_cast<KeyID>(id) || mask2 != static_cast<KeyModifierMask>(mask))
-    LOG_DEBUG1("key down translated to id=0x%08x, mask=0x%04x", id2, mask2);
+    LOG_VERBOSE("key down translated to id=0x%08x, mask=0x%04x", id2, mask2);
 
-  // forward
   m_client->keyDown(id2, mask2, button, lang);
 }
 
-void ServerProxy::keyRepeat()
+void ServerProxy::keyRepeat(uint16_t id, uint16_t mask, uint16_t count, uint16_t button, const std::string &lang)
 {
-  // get mouse up to date
   flushCompressedMouse();
 
-  // parse
-  uint16_t id;
-  uint16_t mask;
-  uint16_t count;
-  uint16_t button;
-  std::string lang;
-  ProtocolUtil::readf(m_stream, kMsgDKeyRepeat + 4, &id, &mask, &count, &button, &lang);
-  LOG(
-      (CLOG_DEBUG1 "recv key repeat id=0x%08x, mask=0x%04x, count=%d, "
-                   "button=0x%04x, lang=\"%s\"",
-       id, mask, count, button, lang.c_str())
-  );
-
-  // translate
   KeyID id2 = translateKey(static_cast<KeyID>(id));
   KeyModifierMask mask2 = translateModifierMask(static_cast<KeyModifierMask>(mask));
   if (id2 != static_cast<KeyID>(id) || mask2 != static_cast<KeyModifierMask>(mask))
-    LOG_DEBUG1("key repeat translated to id=0x%08x, mask=0x%04x", id2, mask2);
+    LOG_VERBOSE("key repeat translated to id=0x%08x, mask=0x%04x", id2, mask2);
 
-  // forward
   m_client->keyRepeat(id2, mask2, count, button, lang);
 }
 
@@ -612,13 +608,13 @@ void ServerProxy::keyUp()
   uint16_t mask;
   uint16_t button;
   ProtocolUtil::readf(m_stream, kMsgDKeyUp + 4, &id, &mask, &button);
-  LOG_DEBUG1("recv key up id=0x%08x, mask=0x%04x, button=0x%04x", id, mask, button);
+  LOG_VERBOSE("recv key up id=0x%08x, mask=0x%04x, button=0x%04x", id, mask, button);
 
   // translate
   KeyID id2 = translateKey(static_cast<KeyID>(id));
   KeyModifierMask mask2 = translateModifierMask(static_cast<KeyModifierMask>(mask));
   if (id2 != static_cast<KeyID>(id) || mask2 != static_cast<KeyModifierMask>(mask))
-    LOG_DEBUG1("key up translated to id=0x%08x, mask=0x%04x", id2, mask2);
+    LOG_VERBOSE("key up translated to id=0x%08x, mask=0x%04x", id2, mask2);
 
   // forward
   m_client->keyUp(id2, mask2, button);
@@ -632,7 +628,7 @@ void ServerProxy::mouseDown()
   // parse
   int8_t id;
   ProtocolUtil::readf(m_stream, kMsgDMouseDown + 4, &id);
-  LOG_DEBUG1("recv mouse down id=%d", id);
+  LOG_VERBOSE("recv mouse down id=%d", id);
 
   // forward
   m_client->mouseDown(static_cast<ButtonID>(id));
@@ -646,7 +642,7 @@ void ServerProxy::mouseUp()
   // parse
   int8_t id;
   ProtocolUtil::readf(m_stream, kMsgDMouseUp + 4, &id);
-  LOG_DEBUG1("recv mouse up id=%d", id);
+  LOG_VERBOSE("recv mouse up id=%d", id);
 
   // forward
   m_client->mouseUp(static_cast<ButtonID>(id));
@@ -677,7 +673,7 @@ void ServerProxy::mouseMove()
     m_dxMouse = 0;
     m_dyMouse = 0;
   }
-  LOG_DEBUG2("recv mouse move %d,%d", x, y);
+  LOG_VERBOSE("recv mouse move %d,%d", x, y);
 
   // forward
   if (!ignore) {
@@ -707,7 +703,7 @@ void ServerProxy::mouseRelativeMove()
     m_dxMouse += dx;
     m_dyMouse += dy;
   }
-  LOG_DEBUG2("recv mouse relative move %d,%d", dx, dy);
+  LOG_VERBOSE("recv mouse relative move %d,%d", dx, dy);
 
   // forward
   if (!ignore) {
@@ -724,7 +720,7 @@ void ServerProxy::mouseWheel()
   int16_t xDelta;
   int16_t yDelta;
   ProtocolUtil::readf(m_stream, kMsgDMouseWheel + 4, &xDelta, &yDelta);
-  LOG_DEBUG2("recv mouse wheel %+d,%+d", xDelta, yDelta);
+  LOG_VERBOSE("recv mouse wheel %+d,%+d", xDelta, yDelta);
 
   // forward
   m_client->mouseWheel(xDelta, yDelta);
@@ -735,7 +731,7 @@ void ServerProxy::screensaver()
   // parse
   int8_t on;
   ProtocolUtil::readf(m_stream, kMsgCScreenSaver + 4, &on);
-  LOG_DEBUG1("recv screen saver on=%d", on);
+  LOG_VERBOSE("recv screen saver on=%d", on);
 
   // forward
   m_client->screensaver(on != 0);
@@ -744,7 +740,7 @@ void ServerProxy::screensaver()
 void ServerProxy::resetOptions()
 {
   // parse
-  LOG_DEBUG1("recv reset options");
+  LOG_VERBOSE("recv reset options");
 
   // forward
   m_client->resetOptions();
@@ -763,7 +759,12 @@ void ServerProxy::setOptions()
   // parse
   OptionsList options;
   ProtocolUtil::readf(m_stream, kMsgDSetOptions + 4, &options);
-  LOG_DEBUG1("recv set options size=%d", options.size());
+  LOG_VERBOSE("recv set options size=%d", options.size());
+
+  if (options.size() % 2 != 0) {
+    LOG_ERR("options are the incorrect size, can not process them");
+    return;
+  }
 
   // forward
   m_client->setOptions(options);
@@ -789,8 +790,8 @@ void ServerProxy::setOptions()
     }
 
     if (id != kKeyModifierIDNull) {
-      m_modifierTranslationTable[id] = options[i + 1];
-      LOG_DEBUG1("modifier %d mapped to %d", id, m_modifierTranslationTable[id]);
+      m_modifierTranslationTable[id] = std::clamp<KeyModifierMask>(options[i + 1], 0, kKeyModifierIDLast - 1);
+      LOG_VERBOSE("modifier %d mapped to %d", id, m_modifierTranslationTable[id]);
     }
   }
 }
@@ -805,53 +806,6 @@ void ServerProxy::queryInfo()
 
 void ServerProxy::infoAcknowledgment()
 {
-  LOG_DEBUG1("recv info acknowledgment");
+  LOG_VERBOSE("recv info acknowledgment");
   m_ignoreMouse = false;
-}
-
-void ServerProxy::secureInputNotification()
-{
-  std::string app;
-  ProtocolUtil::readf(m_stream, kMsgDSecureInputNotification + 4, &app);
-  LOG_INFO("application \"%s\" is blocking the keyboard", app.c_str());
-}
-
-void ServerProxy::setServerLanguages()
-{
-  std::string serverLanguages;
-  ProtocolUtil::readf(m_stream, kMsgDLanguageSynchronisation + 4, &serverLanguages);
-  m_languageManager.setRemoteLanguages(serverLanguages);
-}
-
-void ServerProxy::setActiveServerLanguage(const std::string_view &language)
-{
-  if (!language.empty() && (language.size() > 0)) {
-    if (m_serverLanguage != language) {
-      m_isUserNotifiedAboutLanguageSyncError = false;
-      m_serverLanguage = language;
-    }
-
-    if (!m_languageManager.isLanguageInstalled(m_serverLanguage)) {
-      if (!m_isUserNotifiedAboutLanguageSyncError) {
-        LOG_WARN("current server language is not installed on client");
-        m_isUserNotifiedAboutLanguageSyncError = true;
-      }
-    } else {
-      m_isUserNotifiedAboutLanguageSyncError = false;
-    }
-  } else {
-    LOG_DEBUG1("active server language is empty");
-  }
-}
-
-void ServerProxy::checkMissedLanguages() const
-{
-  auto missedLanguages = m_languageManager.getMissedLanguages();
-  if (!missedLanguages.empty()) {
-    LOG(
-        (CLOG_WARN "You need to install these languages on this computer and restart "
-                   "Deskflow to enable support for multiple languages: %s",
-         missedLanguages.c_str())
-    );
-  }
 }

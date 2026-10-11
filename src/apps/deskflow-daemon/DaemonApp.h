@@ -1,12 +1,10 @@
 /*
  * Deskflow -- mouse and keyboard sharing utility
- * SPDX-FileCopyrightText: (C) 2012 - 2025 Symless Ltd.
+ * SPDX-FileCopyrightText: (C) 2012 - 2025 Synergy App Ltd
  * SPDX-License-Identifier: GPL-2.0-only WITH LicenseRef-OpenSSL-Exception
  */
 
 #pragma once
-
-#include <string>
 
 #include <QObject>
 #include <QThread>
@@ -21,7 +19,7 @@ namespace deskflow::core::ipc {
 class DaemonIpcServer;
 }
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
 class MSWindowsWatchdog;
 #endif
 
@@ -48,22 +46,20 @@ private:
   int mainLoop();
   int daemonLoop();
   void saveLogLevel(const QString &logLevel) const;
-  void setElevate(bool elevate);
-  void setCommand(const QString &command);
+  void setConfigFile(const QString &configFile);
   void applyWatchdogCommand() const;
   void clearWatchdogCommand();
-  void clearSettings() const;
+  void clearSettings();
 
   static void showConsole();
 
-#if SYSAPI_WIN32
+#if defined(Q_OS_WIN)
   std::unique_ptr<MSWindowsWatchdog> m_pWatchdog;
 #endif
 
   IEventQueue &m_events;
   FileLogOutputter *m_pFileLogOutputter = nullptr;
   deskflow::core::ipc::DaemonIpcServer *m_ipcServer = nullptr;
-  std::string m_command = "";
-  bool m_elevate = false;
+  QString m_configFile;
   bool m_foreground = false;
 };
