@@ -193,10 +193,12 @@ jobs:
         run: |
           Get-Command ninja
           Get-Command cl
+          # Quote the dotted -D values. PowerShell otherwise splits
+          # 1.27.1.1 and CMake only receives 1.
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON `
-            -DDESKFLOW_FORCE_VERSION=1.27.1.1 `
-            -DPACKAGE_VERSION_LABEL=1.27.1.1 `
+            "-DSKIP_BUILD_TESTS=ON" "-DCMAKE_COMPILE_WARNING_AS_ERROR=ON" `
+            "-DDESKFLOW_FORCE_VERSION=1.27.1.1" `
+            "-DPACKAGE_VERSION_LABEL=1.27.1.1" `
             ${{ steps.get-deps.outputs.vcpkg-cmake-config }}
 
       - name: Package
@@ -204,11 +206,21 @@ jobs:
         run: cmake --build build --config Release -j8 --target package
 
       - name: Collect
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p dist
-          find build -type f \( -name '*.msi' -o -name '*.zip' \) -exec cp {} dist/ \;
-          ls -lh dist
+          $expected = @(
+            "build/deskflow-1.27.1.1-win-x64.msi",
+            "build/deskflow-1.27.1.1-win-x64-portable.zip"
+          )
+          foreach ($path in $expected) {
+            if (-not (Test-Path $path)) {
+              Get-ChildItem build -Recurse -Include *.msi,*.zip | Select-Object -ExpandProperty FullName
+              throw "Missing $path"
+            }
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item $expected dist
+          Get-ChildItem dist | Format-Table Name,Length
 
       - name: Upload
         uses: actions/upload-artifact@v7

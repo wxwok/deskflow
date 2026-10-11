@@ -25,7 +25,7 @@ Install this build on every machine that should share the pointer. A client olde
 | work (server) | Ubuntu 24.04 amd64, GNOME Wayland | `deskflow-1.27.1.1-ubuntu-24.04-amd64.deb` |
 | dream (client) | Ubuntu 26.04 amd64, GNOME Wayland | `deskflow-1.27.1.1-ubuntu-26.04-amd64.deb` |
 | sur3, x550 (clients) | MX Linux 25.3 = Debian 13 trixie amd64, X11 | `deskflow-1.27.1.1-debian-13-amd64.deb` |
-| workwin (client) | Windows 11 x64 | `deskflow-1.27.1.1-win-x64.msi`, or the `.zip` if you do not want an installer |
+| workwin (client) | Windows 11 x64 | `deskflow-1.27.1.1-win-x64.msi`, or `deskflow-1.27.1.1-win-x64-portable.zip` if you do not want an installer |
 
 The Ubuntu 24.04 package carries its own Qt 6.8, libei 1.4, and libportal 0.9 under `/usr/lib/deskflow`, because Ubuntu 24.04's repositories are older than this tree requires. The Debian 13 and Ubuntu 26.04 packages use each distro's own libraries. MX Linux 25.3 tracks Debian 13, so use the Debian 13 package there.
 
