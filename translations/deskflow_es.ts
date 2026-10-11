@@ -745,6 +745,33 @@ Además, verifique que puede %1 el archivo de configuración del servidor: %2</t
     </message>
 </context>
 <context>
+    <name>MonitorLayoutWidget</name>
+    <message>
+        <source>Use monitor layout for pointer switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No computer selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exact layout origin of the selected computer, in pixels.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag a computer so its monitors touch another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
@@ -1095,6 +1122,10 @@ Al habilitar esta opción, se deshabilitará la interfaz gráfica de usuario (GU
     <message>
         <source>Enable lock to computer at startup</source>
         <translation type="unfinished">Activar el bloqueo del ordenador al iniciar</translation>
+    </message>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

@@ -610,6 +610,7 @@ void MainWindow::serverConnectionConfigureClient(const QString &clientName)
 {
   m_serverConfigDialogVisible = true;
   ServerConfigDialog dialog(this, m_serverConfig);
+  connect(&m_coreProcess, &CoreProcess::monitorGeometryChanged, &dialog, &ServerConfigDialog::applyReportedGeometry);
   if (dialog.addClient(clientName) && dialog.exec() == QDialog::Accepted) {
     m_coreProcess.restart();
   }
@@ -1086,6 +1087,7 @@ void MainWindow::showConfigureServer(const QString &message)
 {
   ServerConfigDialog dialog(this, serverConfig());
   dialog.message(message);
+  connect(&m_coreProcess, &CoreProcess::monitorGeometryChanged, &dialog, &ServerConfigDialog::applyReportedGeometry);
   if ((dialog.exec() == QDialog::Accepted) && m_coreProcess.isStarted()) {
     m_coreProcess.restart();
   }

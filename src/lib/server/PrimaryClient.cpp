@@ -25,6 +25,11 @@ void PrimaryClient::reconfigure(uint32_t activeSides)
   m_computer->reconfigure(activeSides);
 }
 
+void PrimaryClient::setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges)
+{
+  m_computer->setMonitorSwitchEdges(edges);
+}
+
 uint32_t PrimaryClient::registerHotKey(KeyID key, KeyModifierMask mask)
 {
   return m_computer->registerHotKey(key, mask);
@@ -82,6 +87,11 @@ bool PrimaryClient::getClipboard(ClipboardID id, IClipboard *clipboard) const
 void PrimaryClient::getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const
 {
   m_computer->getShape(x, y, width, height);
+}
+
+std::vector<deskflow::MonitorRect> PrimaryClient::getMonitors() const
+{
+  return m_computer->getMonitors();
 }
 
 void PrimaryClient::getCursorPos(int32_t &x, int32_t &y) const

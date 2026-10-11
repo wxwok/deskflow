@@ -745,6 +745,33 @@ Inoltre, verifica di poter %1 il file di configurazione del server: %2</translat
     </message>
 </context>
 <context>
+    <name>MonitorLayoutWidget</name>
+    <message>
+        <source>Use monitor layout for pointer switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No computer selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exact layout origin of the selected computer, in pixels.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag a computer so its monitors touch another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
@@ -1095,6 +1122,10 @@ L&apos;abilitazione di questa impostazione disabiliterà l&apos;interfaccia graf
     <message>
         <source>Enable lock to computer at startup</source>
         <translation type="unfinished">Abilita il blocco al computer all&apos;avvio</translation>
+    </message>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

@@ -198,6 +198,12 @@ void Computer::reconfigure(uint32_t activeSides)
   m_computer->reconfigure(activeSides);
 }
 
+void Computer::setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges)
+{
+  assert(m_isPrimary);
+  m_computer->setMonitorSwitchEdges(edges);
+}
+
 void Computer::warpCursor(int32_t x, int32_t y)
 {
   assert(m_isPrimary);
@@ -402,6 +408,11 @@ bool Computer::getClipboard(ClipboardID id, IClipboard *clipboard) const
 void Computer::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
 {
   m_computer->getShape(x, y, w, h);
+}
+
+std::vector<deskflow::MonitorRect> Computer::getMonitors() const
+{
+  return m_computer->getMonitors();
 }
 
 void Computer::getCursorPos(int32_t &x, int32_t &y) const

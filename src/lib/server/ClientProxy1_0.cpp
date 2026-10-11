@@ -216,6 +216,19 @@ void ClientProxy1_0::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) co
   h = m_info.m_h;
 }
 
+std::vector<deskflow::MonitorRect> ClientProxy1_0::getMonitors() const
+{
+  if (!m_monitors.empty()) {
+    return m_monitors;
+  }
+  return IComputer::getMonitors();
+}
+
+void ClientProxy1_0::setMonitors(std::vector<deskflow::MonitorRect> monitors)
+{
+  m_monitors = std::move(monitors);
+}
+
 void ClientProxy1_0::getCursorPos(int32_t &x, int32_t &y) const
 {
   // note -- this returns the cursor pos from when we last got client info
@@ -402,6 +415,11 @@ bool ClientProxy1_0::recvInfo()
   m_info.m_h = h;
   m_info.m_mx = mx;
   m_info.m_my = my;
+
+  // Protocol 1.0 through 1.8 only know this bounding rectangle. A 1.9
+  // client replaces it with the DMON list that follows this message.
+  m_monitors.clear();
+  m_monitors.push_back(deskflow::MonitorRect{"", x, y, w, h});
 
   // acknowledge receipt
   LOG_VERBOSE("send info ack to \"%s\"", getName().c_str());

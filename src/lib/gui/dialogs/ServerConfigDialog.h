@@ -21,6 +21,8 @@ namespace Ui {
 class ServerConfigDialog;
 }
 
+class MonitorLayoutWidget;
+
 class ServerConfigDialog : public QDialog
 {
   Q_OBJECT
@@ -29,6 +31,7 @@ public:
   ServerConfigDialog(QWidget *parent, ServerConfig &config);
   ~ServerConfigDialog() override;
   bool addClient(const QString &clientName);
+  void applyReportedGeometry(const QString &computer, const QString &monitors);
   void message(const QString &message)
   {
     m_message = message;
@@ -120,4 +123,5 @@ private:
   ServerConfig m_serverConfig;
   ComputerSetupModel m_computerSetupModel;
   SettingsDialogButtonBox *m_buttonBox = nullptr;
+  MonitorLayoutWidget *m_monitorLayout = nullptr;
 };

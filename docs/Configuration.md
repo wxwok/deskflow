@@ -271,6 +271,25 @@ This indicates that computer ''larry'' is to the right of computer ''moe'' (so m
 
 Note that links do not have to be symmetrical; for instance, here the edge between ''moe'' and ''curly'' maps to different ranges depending on if you're going up or down. In fact links don't have to be bidirectional. You can configure the right of ''moe'' to go to ''larry'' without a link from the left of ''larry'' to ''moe''. It's possible to configure a computer with no outgoing links; the cursor will get stuck on that computer unless you have a hot key configured to switch off of that computer.
 
+### layout section
+
+Optional. When `section: layout` is present and names at least one computer, pointer switching uses each monitor's real edges instead of the links above. The links stay in the file and still describe the grid, but they are not used for the pointer while the layout is present. Hot keys are unchanged. Omit the section to keep the current behaviour.
+
+Each computer keeps the monitor arrangement its operating system reports. `origin` places that arrangement on one shared desktop. A `monitor` line is `name, x, y, width, height` in the computer's own pixels. The name may contain commas; the last four fields are the numbers.
+
+```
+section: layout
+	work:
+		origin = 0, 0
+		monitor = HDMI-1, 0, 0, 1080, 1920
+	sur3:
+		origin = -1080, 1920
+		monitor = sur3, 0, 0, 2160, 1440
+end
+```
+
+Moving onto an edge switches only when that edge is not continued by another monitor of the same computer and does overlap a monitor of a different computer. See `docs/monitor-layout.md` and `docs/examples/monitor-layout.conf`. Put the layout section before the links section when the computers are not already registered in the general settings.
+
 ### options section
 
 ''args'' is a list of lines of the form <code>name = value</code>. These set the global options.
