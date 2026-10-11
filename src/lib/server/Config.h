@@ -11,13 +11,16 @@
 #include "base/BaseException.h"
 #include "base/String.h"
 #include "deskflow/IPlatformComputer.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/OptionTypes.h"
 #include "net/NetworkAddress.h"
 #include "server/InputFilter.h"
 
+#include <cstdint>
 #include <iosfwd>
 #include <map>
 #include <set>
+#include <vector>
 
 namespace deskflow::server {
 class Config;
@@ -335,6 +338,38 @@ public:
   */
   bool hasNeighbor(const std::string &, Direction, float start, float end) const;
 
+  //! One computer's monitors placed on the shared virtual desktop.
+  /*!
+  \c originX/Y is added to each monitor's local coordinates. Monitors stay
+  in the arrangement reported by that computer.
+  */
+  struct MonitorPlacement
+  {
+    int32_t originX = 0;
+    int32_t originY = 0;
+    std::vector<deskflow::MonitorRect> monitors;
+
+    bool operator==(const MonitorPlacement &) const = default;
+  };
+
+  using MonitorPlacementMap = std::map<std::string, MonitorPlacement, deskflow::string::CaselessCmp>;
+
+  //! Replace one computer in the monitor layout. Empty monitors removes it.
+  void setMonitorPlacement(
+      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+  );
+
+  //! Drop the monitor layout so neighbour links control pointer switching.
+  void clearMonitorLayout();
+
+  //! True when a \c section: layout was configured.
+  bool hasMonitorLayout() const;
+
+  const MonitorPlacementMap &monitorPlacements() const
+  {
+    return m_monitorPlacements;
+  }
+
   //! Get beginning neighbor iterator
   link_const_iterator beginNeighbor(const std::string &) const;
   //! Get ending neighbor iterator
@@ -399,6 +434,7 @@ private:
   void readSectionScreens(ConfigReadContext &);
   void readSectionLinks(ConfigReadContext &);
   void readSectionAliases(ConfigReadContext &);
+  void readSectionLayout(ConfigReadContext &);
 
   InputFilter::Condition *
   parseCondition(const ConfigReadContext &, const std::string &condition, const std::vector<std::string> &args);
@@ -415,6 +451,7 @@ private:
   NetworkAddress m_deskflowAddress;
   ScreenOptions m_globalOptions;
   InputFilter m_inputFilter;
+  MonitorPlacementMap m_monitorPlacements;
   bool m_hasLockToComputerAction = false;
   IEventQueue *m_events;
 };

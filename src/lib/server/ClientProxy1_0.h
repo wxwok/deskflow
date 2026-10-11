@@ -9,8 +9,11 @@
 #pragma once
 
 #include "deskflow/Clipboard.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/ProtocolTypes.h"
 #include "server/ClientProxy.h"
+
+#include <vector>
 
 class Event;
 class EventQueueTimer;
@@ -31,6 +34,7 @@ public:
   // IComputer
   bool getClipboard(ClipboardID id, IClipboard *) const override;
   void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const override;
+  std::vector<deskflow::MonitorRect> getMonitors() const override;
   void getCursorPos(int32_t &x, int32_t &y) const override;
 
   // IClient overrides
@@ -65,6 +69,11 @@ protected:
   virtual void addHeartbeatTimer();
   virtual void removeHeartbeatTimer();
   virtual bool recvClipboard();
+  void setMonitors(std::vector<deskflow::MonitorRect> monitors);
+  IEventQueue *eventQueue() const
+  {
+    return m_events;
+  }
 
 private:
   void disconnect();
@@ -96,6 +105,7 @@ private:
   using MessageParser = bool (ClientProxy1_0::*)(const uint8_t *);
 
   ClientInfo m_info;
+  std::vector<deskflow::MonitorRect> m_monitors;
   double m_heartbeatAlarm;
   EventQueueTimer *m_heartbeatTimer = nullptr;
   MessageParser m_parser = &ClientProxy1_0::parseHandshakeMessage;

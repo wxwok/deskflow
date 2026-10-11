@@ -16,6 +16,7 @@
 #include "deskflow/KeyTypes.h"
 #include "deskflow/MouseTypes.h"
 #include "server/Config.h"
+#include "server/MonitorLayout.h"
 
 #include <climits>
 #include <map>
@@ -254,6 +255,20 @@ private:
   // after entering the client in the given direction.
   void avoidJumpZone(const BaseClientProxy *, Direction, int32_t &x, int32_t &y) const;
 
+  // Nudge \p x,\p y inward when \p travel lands on a switchable edge of the primary.
+  void avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t &x, int32_t &y) const;
+
+  // Switch using a monitor-layout crossing. Returns true if the pointer moved.
+  bool switchByLayout(const deskflow::MonitorCrossing &crossing, int32_t xActive, int32_t yActive);
+
+  // Rebuild the runtime layout from connected computers and tell the primary.
+  void rebuildMonitorLayout();
+
+  // Tell the GUI the latest per-monitor geometry for every connected computer.
+  void publishMonitorGeometry() const;
+
+  BaseClientProxy *clientByCanonicalName(const std::string &name) const;
+
   // test if a switch is permitted.  this includes testing user
   // options like switch delay and tracking any state required to
   // implement them.  returns true iff a switch is permitted.
@@ -381,6 +396,9 @@ private:
 
   // current configuration
   ServerConfig *m_config = nullptr;
+
+  // Opt-in per-monitor placement. Empty unless the config has section: layout.
+  MonitorLayout m_monitorLayout;
 
   // input filter (from m_config);
   InputFilter *m_inputFilter = nullptr;

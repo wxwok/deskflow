@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "deskflow/MonitorGeometry.h"
 #include "mt/Thread.h"
 #include "platform/EiComputer.h"
 
@@ -17,8 +18,10 @@
 #include <libportal/inputcapture.h>
 #include <libportal/portal.h>
 
+#include <atomic>
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -38,6 +41,7 @@ public:
   void disable();
   void release();
   void release(double x, double y);
+  void setSwitchEdges(std::vector<deskflow::EdgeSpan> edges);
   bool isActive() const
   {
     return m_isActive;
@@ -146,6 +150,15 @@ private:
   std::pair<int, int> mapPortalActivationToComputerPosition(guint barrierId, double rawX, double rawY) const;
   std::pair<double, double> mapPortalReleasePosition(double x, double y) const;
   void addBarrier(guint id, BarrierSide side, gint zoneX, gint zoneY, guint zoneWidth, guint zoneHeight);
+  void addBarrierSegment(
+      guint id, BarrierSide side, gint zoneX, gint zoneY, guint zoneWidth, guint zoneHeight, gint x1, gint y1, gint x2,
+      gint y2
+  );
+  bool monitorEdges() const
+  {
+    return m_monitorEdges;
+  }
+  std::vector<deskflow::EdgeSpan> switchEdges() const;
 
   EiComputer *m_computer = nullptr;
   IEventQueue *m_events = nullptr;
@@ -170,6 +183,14 @@ private:
 
   std::vector<XdpInputCapturePointerBarrier *> m_barriers;
   std::vector<BarrierInfo> m_barrierInfo;
+  mutable std::mutex m_edgeMutex;
+  std::vector<deskflow::EdgeSpan> m_switchEdges;
+  bool m_monitorEdges = false;
+  bool m_rebuildQueued = false;
+  guint m_rebuildIdle = 0;
+  std::atomic<bool> m_portalAlive{true};
+  Bounds m_zoneUnion;
+  bool m_hasZoneUnion = false;
 
   EiClipboard *m_clipboard = nullptr;
 };

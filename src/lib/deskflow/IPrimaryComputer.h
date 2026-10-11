@@ -9,7 +9,10 @@
 #pragma once
 
 #include "deskflow/KeyTypes.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/MouseTypes.h"
+
+#include <vector>
 
 //! Primary computer interface
 /*!
@@ -87,6 +90,18 @@ public:
   possible change in jump zones.
   */
   virtual void reconfigure(uint32_t activeSides) = 0;
+
+  //! Edges where the primary pointer should be captured for a monitor layout.
+  /*!
+  An empty list keeps the legacy bounding-box jump zones. A non-empty list
+  is used by backends that can place a barrier on an individual monitor
+  edge (Wayland input capture). Other backends ignore it and detect the
+  edge from the pointer position.
+  */
+  virtual void setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges)
+  {
+    (void)edges;
+  }
 
   /**
    * @brief activeSides

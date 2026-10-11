@@ -234,6 +234,14 @@ bool OSXComputer::getClipboard(ClipboardID, IClipboard *dst) const
   return true;
 }
 
+std::vector<deskflow::MonitorRect> OSXComputer::getMonitors() const
+{
+  if (!m_monitors.empty()) {
+    return m_monitors;
+  }
+  return IComputer::getMonitors();
+}
+
 void OSXComputer::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
 {
   x = m_x;
@@ -1335,9 +1343,21 @@ bool OSXComputer::updateComputerShape()
 
   // get smallest rect enclosing all display rects
   CGRect totalBounds = CGRectZero;
+  m_monitors.clear();
   for (CGDisplayCount i = 0; i < displayCount; ++i) {
     CGRect bounds = CGDisplayBounds(displays[i]);
     totalBounds = CGRectUnion(totalBounds, bounds);
+    const auto width = static_cast<int32_t>(bounds.size.width);
+    const auto height = static_cast<int32_t>(bounds.size.height);
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+    m_monitors.push_back(
+        deskflow::MonitorRect{
+            "display-" + std::to_string(displays[i]), static_cast<int32_t>(bounds.origin.x),
+            static_cast<int32_t>(bounds.origin.y), width, height
+        }
+    );
   }
 
   // get shape of default computer

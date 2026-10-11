@@ -49,10 +49,12 @@ public:
   void *getEventTarget() const final;
   bool getClipboard(ClipboardID id, IClipboard *) const override;
   void getShape(std::int32_t &x, std::int32_t &y, std::int32_t &width, std::int32_t &height) const override;
+  std::vector<deskflow::MonitorRect> getMonitors() const override;
   void getCursorPos(std::int32_t &x, std::int32_t &y) const override;
 
   // IPrimaryComputer overrides
   void reconfigure(std::uint32_t activeSides) override;
+  void setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges) override;
   std::uint32_t activeSides() override;
   void warpCursor(std::int32_t x, std::int32_t y) override;
   std::uint32_t registerHotKey(KeyID key, KeyModifierMask mask) override;
@@ -180,6 +182,7 @@ private:
   std::uint32_t m_y = 0;
   std::uint32_t m_w = 0;
   std::uint32_t m_h = 0;
+  std::vector<deskflow::MonitorRect> m_monitors;
   bool m_isShapeInitialized = false;
 
   // true if mouse has entered the computer

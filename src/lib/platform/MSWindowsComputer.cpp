@@ -425,6 +425,14 @@ bool MSWindowsComputer::getClipboard(ClipboardID, IClipboard *dst) const
   return true;
 }
 
+std::vector<deskflow::MonitorRect> MSWindowsComputer::getMonitors() const
+{
+  if (!m_monitors.empty()) {
+    return m_monitors;
+  }
+  return IComputer::getMonitors();
+}
+
 void MSWindowsComputer::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
 {
   assert(m_class != 0);
@@ -1440,6 +1448,35 @@ void MSWindowsComputer::updateComputerShape()
 
   // check for multiple monitors
   m_multimon = (m_w != GetSystemMetrics(SM_CXSCREEN) || m_h != GetSystemMetrics(SM_CYSCREEN));
+
+  m_monitors.clear();
+  EnumDisplayMonitors(
+      nullptr, nullptr,
+      [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+        auto *monitors = reinterpret_cast<std::vector<deskflow::MonitorRect> *>(data);
+        MONITORINFOEXA info;
+        info.cbSize = sizeof(info);
+        if (!GetMonitorInfoA(monitor, &info)) {
+          return TRUE;
+        }
+        const int32_t width = info.rcMonitor.right - info.rcMonitor.left;
+        const int32_t height = info.rcMonitor.bottom - info.rcMonitor.top;
+        if (width <= 0 || height <= 0) {
+          return TRUE;
+        }
+        std::string name;
+        DISPLAY_DEVICEA device;
+        device.cb = sizeof(device);
+        if (EnumDisplayDevicesA(info.szDevice, 0, &device, 0) && device.DeviceString[0] != '\0') {
+          name = device.DeviceString;
+        } else {
+          name = info.szDevice;
+        }
+        monitors->push_back(deskflow::MonitorRect{name, info.rcMonitor.left, info.rcMonitor.top, width, height});
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&m_monitors)
+  );
 
   // tell the desks
   m_desks->setShape(m_x, m_y, m_w, m_h, m_xCenter, m_yCenter, m_multimon);

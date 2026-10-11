@@ -202,6 +202,21 @@ void EiComputer::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
   h = m_h;
 }
 
+std::vector<deskflow::MonitorRect> EiComputer::getMonitors() const
+{
+  if (!m_monitors.empty()) {
+    return m_monitors;
+  }
+  return IComputer::getMonitors();
+}
+
+void EiComputer::setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges)
+{
+  if (m_portalInputCapture != nullptr) {
+    m_portalInputCapture->setSwitchEdges(edges);
+  }
+}
+
 void EiComputer::getCursorPos(int32_t &x, int32_t &y) const
 {
   x = m_cursorX;
@@ -561,17 +576,26 @@ void EiComputer::updateShape()
   std::uint32_t newX = std::numeric_limits<uint32_t>::max();
   std::uint32_t newY = std::numeric_limits<uint32_t>::max();
   bool foundRegion = false;
+  std::vector<deskflow::MonitorRect> monitors;
   for (auto it = m_eiDevices.begin(); it != m_eiDevices.end(); it++) {
     auto idx = 0;
     struct ei_region *r;
     while ((r = ei_device_get_region(*it, idx++)) != nullptr) {
       foundRegion = true;
+      const auto rx = static_cast<int32_t>(ei_region_get_x(r));
+      const auto ry = static_cast<int32_t>(ei_region_get_y(r));
+      const auto rw = static_cast<int32_t>(ei_region_get_width(r));
+      const auto rh = static_cast<int32_t>(ei_region_get_height(r));
       newX = std::min(ei_region_get_x(r), newX);
       newY = std::min(ei_region_get_y(r), newY);
       newW = std::max(ei_region_get_x(r) + ei_region_get_width(r), newW);
       newH = std::max(ei_region_get_y(r) + ei_region_get_height(r), newH);
+      if (rw > 0 && rh > 0) {
+        monitors.push_back(deskflow::MonitorRect{"output-" + std::to_string(monitors.size() + 1), rx, ry, rw, rh});
+      }
     }
   }
+  m_monitors = std::move(monitors);
 
   if (!foundRegion) {
     LOG_DEBUG("logical output size: unchanged (no region-reporting device present)");

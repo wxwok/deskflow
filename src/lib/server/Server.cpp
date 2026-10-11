@@ -25,8 +25,10 @@
 #include "server/ClientProxyUnknown.h"
 #include "server/PrimaryClient.h"
 
-#ifdef _WIN32
+#include <QStringList>
+
 #include <algorithm>
+#ifdef _WIN32
 #include <array>
 #endif
 #include <cmath>
@@ -232,6 +234,7 @@ bool Server::setConfig(const ServerConfig &config)
 
   // tell primary computer about reconfiguration
   m_primaryClient->reconfigure(getActivePrimarySides());
+  rebuildMonitorLayout();
 
   // tell all (connected) clients about current options
   for (ClientList::const_iterator index = m_clients.begin(); index != m_clients.end(); ++index) {
@@ -340,19 +343,59 @@ uint32_t Server::getActivePrimarySides() const
   using enum DirectionMask;
   using enum Direction;
   uint32_t sides = 0;
-  if (!isLockedToComputerServer()) {
-    if (hasAnyNeighbor(m_primaryClient, Left)) {
-      sides |= static_cast<int>(LeftMask);
+  if (isLockedToComputerServer()) {
+    return sides;
+  }
+
+  // A layout only marks a bounding-box side when a switch edge lies on that
+  // extreme. Interior edges are detected from the pointer position, and the
+  // Windows hook must not swallow motion on a dead outer edge.
+  if (m_monitorLayout.enabled()) {
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t w = 0;
+    int32_t h = 0;
+    m_primaryClient->getShape(x, y, w, h);
+    for (const auto &edge : m_monitorLayout.switchEdges(getName(m_primaryClient))) {
+      switch (edge.side) {
+      case Left:
+        if (edge.position <= x) {
+          sides |= static_cast<int>(LeftMask);
+        }
+        break;
+      case Right:
+        if (edge.position >= x + w - 1) {
+          sides |= static_cast<int>(RightMask);
+        }
+        break;
+      case Top:
+        if (edge.position <= y) {
+          sides |= static_cast<int>(TopMask);
+        }
+        break;
+      case Bottom:
+        if (edge.position >= y + h - 1) {
+          sides |= static_cast<int>(BottomMask);
+        }
+        break;
+      case NoDirection:
+        break;
+      }
     }
-    if (hasAnyNeighbor(m_primaryClient, Right)) {
-      sides |= static_cast<int>(RightMask);
-    }
-    if (hasAnyNeighbor(m_primaryClient, Top)) {
-      sides |= static_cast<int>(TopMask);
-    }
-    if (hasAnyNeighbor(m_primaryClient, Bottom)) {
-      sides |= static_cast<int>(BottomMask);
-    }
+    return sides;
+  }
+
+  if (hasAnyNeighbor(m_primaryClient, Left)) {
+    sides |= static_cast<int>(LeftMask);
+  }
+  if (hasAnyNeighbor(m_primaryClient, Right)) {
+    sides |= static_cast<int>(RightMask);
+  }
+  if (hasAnyNeighbor(m_primaryClient, Top)) {
+    sides |= static_cast<int>(TopMask);
+  }
+  if (hasAnyNeighbor(m_primaryClient, Bottom)) {
+    sides |= static_cast<int>(BottomMask);
   }
   return sides;
 }
@@ -733,6 +776,161 @@ BaseClientProxy *Server::mapToNeighbor(BaseClientProxy *src, Direction srcSide, 
   avoidJumpZone(dst, srcSide, x, y);
 
   return dst;
+}
+
+void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t &x, int32_t &y) const
+{
+  if (dst != m_primaryClient) {
+    return;
+  }
+  const int32_t zone = getJumpZoneSize(dst);
+  if (zone < 1) {
+    return;
+  }
+
+  Direction arrival = Direction::NoDirection;
+  using enum Direction;
+  switch (travel) {
+  case Left:
+    arrival = Right;
+    break;
+  case Right:
+    arrival = Left;
+    break;
+  case Top:
+    arrival = Bottom;
+    break;
+  case Bottom:
+    arrival = Top;
+    break;
+  case NoDirection:
+    return;
+  }
+
+  const int32_t along = (arrival == Left || arrival == Right) ? y : x;
+  const int32_t position = (arrival == Left || arrival == Right) ? x : y;
+  bool onSwitchEdge = false;
+  for (const auto &edge : m_monitorLayout.switchEdges(getName(dst))) {
+    if (edge.side == arrival && edge.position == position && edge.contains(along)) {
+      onSwitchEdge = true;
+      break;
+    }
+  }
+  if (!onSwitchEdge) {
+    return;
+  }
+
+  const deskflow::MonitorRect *hit = nullptr;
+  for (const auto &monitor : dst->getMonitors()) {
+    if (monitor.contains(x, y)) {
+      hit = &monitor;
+      break;
+    }
+  }
+  if (hit == nullptr) {
+    return;
+  }
+
+  switch (arrival) {
+  case Left:
+    x = std::min(hit->right() - 1, x + zone);
+    break;
+  case Right:
+    x = std::max(hit->x, x - zone);
+    break;
+  case Top:
+    y = std::min(hit->bottom() - 1, y + zone);
+    break;
+  case Bottom:
+    y = std::max(hit->y, y - zone);
+    break;
+  case NoDirection:
+    break;
+  }
+}
+
+bool Server::switchByLayout(const deskflow::MonitorCrossing &crossing, int32_t xActive, int32_t yActive)
+{
+  auto *destination = clientByCanonicalName(crossing.computer);
+  if (destination == nullptr || destination == m_active) {
+    return false;
+  }
+  int32_t x = crossing.x;
+  int32_t y = crossing.y;
+  avoidJumpZoneLayout(destination, crossing.travel, x, y);
+  if (!isSwitchOkay(destination, crossing.travel, x, y, xActive, yActive)) {
+    return false;
+  }
+  switchComputer(destination, x, y, false);
+  return true;
+}
+
+void Server::rebuildMonitorLayout()
+{
+  m_monitorLayout.clear();
+  if (m_config != nullptr && m_config->hasMonitorLayout()) {
+    for (const auto &[name, placement] : m_config->monitorPlacements()) {
+      auto *client = clientByCanonicalName(name);
+      if (client == nullptr) {
+        continue;
+      }
+      auto monitors = client->getMonitors();
+      if (monitors.empty()) {
+        monitors = placement.monitors;
+      }
+      const auto canonical = getName(client);
+      m_monitorLayout.setComputer(canonical, placement.originX, placement.originY, std::move(monitors));
+    }
+  }
+
+  if (m_primaryClient != nullptr) {
+    std::vector<deskflow::EdgeSpan> edges;
+    if (m_monitorLayout.enabled()) {
+      edges = m_monitorLayout.switchEdges(getName(m_primaryClient));
+    }
+    m_primaryClient->setMonitorSwitchEdges(edges);
+    m_primaryClient->reconfigure(getActivePrimarySides());
+  }
+  publishMonitorGeometry();
+}
+
+void Server::publishMonitorGeometry() const
+{
+  for (const auto &[name, client] : m_clients) {
+    QStringList parts;
+    for (const auto &monitor : client->getMonitors()) {
+      auto monitorName = QString::fromStdString(monitor.name);
+      monitorName.replace(QLatin1Char('|'), QLatin1Char('_'));
+      monitorName.replace(QLatin1Char(';'), QLatin1Char('_'));
+      monitorName.replace(QLatin1Char(','), QLatin1Char('_'));
+      parts.append(QStringLiteral("%1,%2,%3,%4,%5")
+                       .arg(monitorName)
+                       .arg(monitor.x)
+                       .arg(monitor.y)
+                       .arg(monitor.width)
+                       .arg(monitor.height));
+    }
+    auto computerName = QString::fromStdString(name);
+    computerName.replace(QLatin1Char('|'), QLatin1Char('_'));
+    ipcSendToClient(QStringLiteral("monitorGeometry"), computerName + QLatin1Char('|') + parts.join(QLatin1Char(';')));
+  }
+}
+
+BaseClientProxy *Server::clientByCanonicalName(const std::string &name) const
+{
+  auto canonical = m_config->getCanonicalName(name);
+  if (canonical.empty()) {
+    canonical = name;
+  }
+  if (const auto it = m_clients.find(canonical); it != m_clients.end()) {
+    return it->second;
+  }
+  for (const auto &[clientName, client] : m_clients) {
+    if (deskflow::string::CaselessCmp::equal(clientName, canonical)) {
+      return client;
+    }
+  }
+  return nullptr;
 }
 
 void Server::avoidJumpZone(const BaseClientProxy *dst, Direction dir, int32_t &x, int32_t &y) const
@@ -1138,6 +1336,7 @@ void Server::handleShapeChanged(BaseClientProxy *client)
   }
 
   LOG_DEBUG("computer \"%s\" shape changed", getName(client).c_str());
+  rebuildMonitorLayout();
 
   // update jump coordinate
   int32_t x;
@@ -1630,6 +1829,20 @@ bool Server::onMouseMovePrimary(int32_t x, int32_t y)
   m_x = x;
   m_y = y;
 
+  if (m_monitorLayout.enabled()) {
+    std::optional<deskflow::MonitorCrossing> horizontal;
+    std::optional<deskflow::MonitorCrossing> vertical;
+    m_monitorLayout.hitEdges(getName(m_active), x, y, getJumpZoneSize(m_active), horizontal, vertical);
+    const std::optional<deskflow::MonitorCrossing> *candidates[] = {&horizontal, &vertical};
+    for (const auto *candidate : candidates) {
+      if (candidate->has_value() && switchByLayout(**candidate, x, y)) {
+        return true;
+      }
+    }
+    noSwitch(x, y);
+    return false;
+  }
+
   // get computer shape
   int32_t ax;
   int32_t ay;
@@ -1756,6 +1969,25 @@ void Server::onMouseMoveSecondary(int32_t dx, int32_t dy)
   // accumulate motion
   m_x += dx;
   m_y += dy;
+
+  if (m_monitorLayout.enabled()) {
+    int32_t clampX = m_x;
+    int32_t clampY = m_y;
+    const auto crossing = m_monitorLayout.travel(getName(m_active), xOld, yOld, m_x, m_y, clampX, clampY);
+    if (crossing.has_value() && switchByLayout(*crossing, clampX, clampY)) {
+      return;
+    }
+    m_x = clampX;
+    m_y = clampY;
+    if (m_switchComputer != nullptr) {
+      noSwitch(m_x, m_y);
+    }
+    if (m_x != xOld || m_y != yOld) {
+      LOG_VERBOSE("move on %s to %d,%d", getName(m_active).c_str(), m_x, m_y);
+      m_active->mouseMove(m_x, m_y);
+    }
+    return;
+  }
 
   // get computer shape
   int32_t ax;
@@ -1916,6 +2148,7 @@ bool Server::addClient(BaseClientProxy *client)
 
   // tell primary client about the active sides
   m_primaryClient->reconfigure(getActivePrimarySides());
+  rebuildMonitorLayout();
 
   return true;
 }
@@ -1937,6 +2170,7 @@ bool Server::removeClient(BaseClientProxy *client)
   // remove from list
   m_clients.erase(getName(client));
   m_clientSet.erase(i);
+  rebuildMonitorLayout();
 
   return true;
 }

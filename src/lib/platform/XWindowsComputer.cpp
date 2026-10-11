@@ -452,6 +452,14 @@ bool XWindowsComputer::getClipboard(ClipboardID id, IClipboard *clipboard) const
   return Clipboard::copy(clipboard, m_clipboard[id], timestamp);
 }
 
+std::vector<deskflow::MonitorRect> XWindowsComputer::getMonitors() const
+{
+  if (!m_monitors.empty()) {
+    return m_monitors;
+  }
+  return IComputer::getMonitors();
+}
+
 void XWindowsComputer::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
 {
   x = m_x;
@@ -942,6 +950,61 @@ void XWindowsComputer::setShape(int32_t width, int32_t height)
     }
   }
 #endif
+
+  m_monitors.clear();
+#if HAVE_X11_EXTENSIONS_XRANDR_H
+  {
+    int count = 0;
+    XRRMonitorInfo *info = XRRGetMonitors(m_display, m_root, True, &count);
+    if (info != nullptr) {
+      for (int index = 0; index < count; ++index) {
+        if (info[index].width <= 0 || info[index].height <= 0) {
+          continue;
+        }
+        std::string name;
+        if (info[index].name != None) {
+          if (char *atom = XGetAtomName(m_display, info[index].name); atom != nullptr) {
+            name = atom;
+            XFree(atom);
+          }
+        }
+        if (name.empty()) {
+          name = "monitor-" + std::to_string(index);
+        }
+        m_monitors.push_back(
+            deskflow::MonitorRect{
+                name, info[index].x, info[index].y, static_cast<int32_t>(info[index].width),
+                static_cast<int32_t>(info[index].height)
+            }
+        );
+        LOG_DEBUG(
+            "monitor %s: %d,%d %dx%d", name.c_str(), info[index].x, info[index].y, info[index].width, info[index].height
+        );
+      }
+      XRRFreeMonitors(info);
+    }
+  }
+#endif
+#if HAVE_X11_EXTENSIONS_XINERAMA_H
+  if (m_monitors.empty() && m_xinerama) {
+    int numScreens = 0;
+    XineramaScreenInfo *screens = XineramaQueryScreens(m_display, &numScreens);
+    if (screens != nullptr) {
+      for (int index = 0; index < numScreens; ++index) {
+        m_monitors.push_back(
+            deskflow::MonitorRect{
+                "xinerama-" + std::to_string(index), screens[index].x_org, screens[index].y_org, screens[index].width,
+                screens[index].height
+            }
+        );
+      }
+      XFree(screens);
+    }
+  }
+#endif
+  if (m_monitors.empty()) {
+    m_monitors.push_back(deskflow::MonitorRect{"", m_x, m_y, m_w, m_h});
+  }
 
   LOG_DEBUG("center: %d,%d", m_xCenter, m_yCenter);
 }

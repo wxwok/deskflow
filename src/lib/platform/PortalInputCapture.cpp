@@ -13,6 +13,7 @@
 #include "base/TMethodJob.h"
 #include "common/Settings.h"
 #include "deskflow/ClipboardTypes.h"
+#include "deskflow/MonitorGeometry.h"
 #include "platform/EiClipboard.h"
 
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <poll.h>
 #include <sys/socket.h> // for EIS fd hack, remove
@@ -70,6 +72,11 @@ int PortalInputCapture::scaleCoordinateBetweenRanges(
 
 bool PortalInputCapture::getPortalBounds(Bounds &bounds) const
 {
+  if (m_hasZoneUnion) {
+    bounds = m_zoneUnion;
+    return bounds.right > bounds.left && bounds.bottom > bounds.top;
+  }
+
   if (m_barrierInfo.empty()) {
     return false;
   }
@@ -187,8 +194,61 @@ PortalInputCapture::PortalInputCapture(EiComputer *computer, IEventQueue *events
   g_idle_add(captureCallback, this);
 }
 
+void PortalInputCapture::setSwitchEdges(std::vector<deskflow::EdgeSpan> edges)
+{
+  bool schedule = false;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_switchEdges = std::move(edges);
+    m_monitorEdges = !m_switchEdges.empty();
+    if (m_glibMainLoop != nullptr && m_portalAlive.load() && !m_rebuildQueued) {
+      m_rebuildQueued = true;
+      schedule = true;
+    }
+  }
+  if (!schedule) {
+    return;
+  }
+
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_rebuildQueued = false;
+          self->m_rebuildIdle = 0;
+        }
+        if (self->m_portalAlive.load() && self->m_session != nullptr) {
+          self->handleZonesChanged(self->m_session, nullptr);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  std::lock_guard lock(m_edgeMutex);
+  m_rebuildIdle = idle;
+}
+
+std::vector<deskflow::EdgeSpan> PortalInputCapture::switchEdges() const
+{
+  std::lock_guard lock(m_edgeMutex);
+  return m_switchEdges;
+}
+
 PortalInputCapture::~PortalInputCapture()
 {
+  m_portalAlive.store(false);
+  guint idle = 0;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    idle = m_rebuildIdle;
+    m_rebuildIdle = 0;
+  }
+  if (idle != 0) {
+    g_source_remove(idle);
+  }
+
   if (g_main_loop_is_running(m_glibMainLoop))
     g_main_loop_quit(m_glibMainLoop);
 
@@ -445,9 +505,47 @@ PortalInputCapture::mapPortalActivationToComputerPosition(guint barrierId, doubl
     y = std::clamp(y, zoneTop, zoneBottom);
   }
 
-  // The portal reports per-output zones, while Deskflow models the whole computer as one computer.
-  // Use the activated barrier to preserve the intended switch direction in Deskflow's aggregate coordinates.
+  // Monitor layout keeps the pointer on the monitor that was actually touched.
+  // Legacy mode collapses every barrier onto the bounding-box edge the neighbour links use.
   using enum BarrierSide;
+  if (monitorEdges()) {
+    int scaledLeft = zoneLeft;
+    int scaledRight = zoneRight;
+    int scaledTop = zoneTop;
+    int scaledBottom = zoneBottom;
+    if (Bounds portalBounds; getPortalBounds(portalBounds)) {
+      scaledLeft = scaleCoordinateBetweenRanges(
+          zoneLeft, portalBounds.left, portalBounds.right, computerX, computerX + computerW - 1
+      );
+      scaledRight = scaleCoordinateBetweenRanges(
+          zoneRight, portalBounds.left, portalBounds.right, computerX, computerX + computerW - 1
+      );
+      scaledTop = scaleCoordinateBetweenRanges(
+          zoneTop, portalBounds.top, portalBounds.bottom, computerY, computerY + computerH - 1
+      );
+      scaledBottom = scaleCoordinateBetweenRanges(
+          zoneBottom, portalBounds.top, portalBounds.bottom, computerY, computerY + computerH - 1
+      );
+    }
+    switch (it->side) {
+    case Left:
+      x = scaledLeft;
+      break;
+    case Right:
+      x = scaledRight;
+      break;
+    case Top:
+      y = scaledTop;
+      break;
+    case Bottom:
+      y = scaledBottom;
+      break;
+    }
+    x = std::clamp(x, std::min(scaledLeft, scaledRight), std::max(scaledLeft, scaledRight));
+    y = std::clamp(y, std::min(scaledTop, scaledBottom), std::max(scaledTop, scaledBottom));
+    return {x, y};
+  }
+
   switch (it->side) {
   case Left:
     x = computerX;
@@ -486,6 +584,19 @@ std::pair<double, double> PortalInputCapture::mapPortalReleasePosition(double x,
 
   auto mappedX = static_cast<std::int32_t>(std::lround(x));
   auto mappedY = static_cast<std::int32_t>(std::lround(y));
+
+  // A monitor layout releases inside whichever monitor was entered. Scaling the
+  // computer point into the portal keeps it off the bounding-box edge.
+  if (monitorEdges()) {
+    return {
+        static_cast<double>(
+            scaleCoordinateBetweenRanges(x, computerLeft, computerRight, portalBounds.left, portalBounds.right)
+        ),
+        static_cast<double>(
+            scaleCoordinateBetweenRanges(y, computerTop, computerBottom, portalBounds.top, portalBounds.bottom)
+        )
+    };
+  }
 
   if (BarrierInfo releaseBarrier; getClosestReleaseBarrier(
           x, y, computerLeft, computerTop, computerRight, computerBottom, portalBounds, releaseBarrier
@@ -556,6 +667,21 @@ void PortalInputCapture::addBarrier(
     break;
   }
 
+  LOG_DEBUG("barrier (%s) %u at %d,%d-%d,%d", barrierSideName(side), id, x1, y1, x2, y2);
+  m_barriers.push_back(XDP_INPUT_CAPTURE_POINTER_BARRIER(
+      g_object_new(XDP_TYPE_INPUT_CAPTURE_POINTER_BARRIER, "id", id, "x1", x1, "y1", y1, "x2", x2, "y2", y2, nullptr)
+  ));
+  m_barrierInfo.push_back({id, side, zoneX, zoneY, zoneWidth, zoneHeight, x1, y1, x2, y2});
+}
+
+void PortalInputCapture::addBarrierSegment(
+    guint id, BarrierSide side, gint zoneX, gint zoneY, guint zoneWidth, guint zoneHeight, gint x1, gint y1, gint x2,
+    gint y2
+)
+{
+  if (x1 != x2 && y1 != y2) {
+    return;
+  }
   LOG_DEBUG("barrier (%s) %u at %d,%d-%d,%d", barrierSideName(side), id, x1, y1, x2, y2);
   m_barriers.push_back(XDP_INPUT_CAPTURE_POINTER_BARRIER(
       g_object_new(XDP_TYPE_INPUT_CAPTURE_POINTER_BARRIER, "id", id, "x1", x1, "y1", y1, "x2", x2, "y2", y2, nullptr)
@@ -783,67 +909,248 @@ void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, con
 
   auto zones = xdp_input_capture_session_get_zones(session);
 
-  // First pass: compute the bounding box (union) of all input-capture zones.
-  // A pointer barrier must lie on the outer boundary of the combined desktop and
-  // be adjacent to a single monitor edge. A barrier placed on an internal edge
-  // between two adjacent monitors is rejected by the portal ("adjacent to
-  // multiple monitor edges"), and a single rejected barrier fails the whole
-  // barrier set - so on a multi-monitor server input capture never engages.
+  struct Zone
+  {
+    gint x = 0;
+    gint y = 0;
+    guint width = 0;
+    guint height = 0;
+
+    gint right() const
+    {
+      return x + static_cast<gint>(width);
+    }
+    gint bottom() const
+    {
+      return y + static_cast<gint>(height);
+    }
+  };
+  struct Interval
+  {
+    gint begin = 0;
+    gint end = 0;
+  };
+
+  std::vector<Zone> zoneList;
   gint unionLeft = 0;
   gint unionTop = 0;
   gint unionRight = 0;
   gint unionBottom = 0;
   bool boundsInit = false;
   for (auto z = zones; z != nullptr; z = z->next) {
-    guint w;
-    guint h;
-    gint x;
-    gint y;
-    g_object_get(z->data, "width", &w, "height", &h, "x", &x, "y", &y, nullptr);
-    const gint right = x + static_cast<gint>(w);
-    const gint bottom = y + static_cast<gint>(h);
+    Zone zone;
+    g_object_get(z->data, "width", &zone.width, "height", &zone.height, "x", &zone.x, "y", &zone.y, nullptr);
+    LOG_DEBUG("input capture zone, %dx%d@%d,%d", zone.width, zone.height, zone.x, zone.y);
     if (!boundsInit) {
-      unionLeft = x;
-      unionTop = y;
-      unionRight = right;
-      unionBottom = bottom;
+      unionLeft = zone.x;
+      unionTop = zone.y;
+      unionRight = zone.right();
+      unionBottom = zone.bottom();
       boundsInit = true;
     } else {
-      unionLeft = std::min(unionLeft, x);
-      unionTop = std::min(unionTop, y);
-      unionRight = std::max(unionRight, right);
-      unionBottom = std::max(unionBottom, bottom);
+      unionLeft = std::min(unionLeft, zone.x);
+      unionTop = std::min(unionTop, zone.y);
+      unionRight = std::max(unionRight, zone.right());
+      unionBottom = std::max(unionBottom, zone.bottom());
     }
+    zoneList.push_back(zone);
   }
 
-  // Second pass: only add a barrier for a zone edge that is part of the outer
-  // boundary of the union (i.e. not an internal seam between two monitors).
+  if (boundsInit && unionRight > unionLeft && unionBottom > unionTop) {
+    m_zoneUnion = {unionLeft, unionTop, unionRight - 1, unionBottom - 1};
+    m_hasZoneUnion = true;
+  } else {
+    m_hasZoneUnion = false;
+  }
+
+  // A barrier on a seam shared by two zones is rejected ("adjacent to multiple
+  // monitor edges") and fails the whole set. Free intervals are the parts of a
+  // zone edge that no other zone touches, including concave notches inside the
+  // bounding box. Those notches are still the outside boundary of the union.
+  const auto freeAlong = [](gint begin, gint end, std::vector<Interval> blocked) {
+    std::sort(blocked.begin(), blocked.end(), [](const Interval &a, const Interval &b) { return a.begin < b.begin; });
+    std::vector<Interval> free;
+    gint cursor = begin;
+    for (const auto &block : blocked) {
+      const gint blockBegin = std::max(block.begin, begin);
+      const gint blockEnd = std::min(block.end, end);
+      if (blockEnd <= blockBegin) {
+        continue;
+      }
+      if (blockBegin > cursor) {
+        free.push_back({cursor, blockBegin});
+      }
+      cursor = std::max(cursor, blockEnd);
+    }
+    if (cursor < end) {
+      free.push_back({cursor, end});
+    }
+    return free;
+  };
+
+  const auto blockedIntervals = [&zoneList](const Zone &zone, BarrierSide side) {
+    std::vector<Interval> blocked;
+    for (const auto &other : zoneList) {
+      if (&other == &zone) {
+        continue;
+      }
+      bool touches = false;
+      Interval interval;
+      using enum BarrierSide;
+      switch (side) {
+      case Left:
+        touches = other.right() == zone.x;
+        interval = {other.y, other.bottom()};
+        break;
+      case Right:
+        touches = other.x == zone.right();
+        interval = {other.y, other.bottom()};
+        break;
+      case Top:
+        touches = other.bottom() == zone.y;
+        interval = {other.x, other.right()};
+        break;
+      case Bottom:
+        touches = other.y == zone.bottom();
+        interval = {other.x, other.right()};
+        break;
+      }
+      if (touches) {
+        blocked.push_back(interval);
+      }
+    }
+    return blocked;
+  };
+
   guint id = 0;
-  while (zones != nullptr) {
-    guint w;
-    guint h;
-    gint x;
-    gint y;
-    g_object_get(zones->data, "width", &w, "height", &h, "x", &x, "y", &y, nullptr);
-
-    LOG_DEBUG("input capture zone, %dx%d@%d,%d", w, h, x, y);
-
-    if ((activeSides & static_cast<int>(LeftMask)) && x == unionLeft) {
-      addBarrier(++id, BarrierSide::Left, x, y, w, h);
+  const bool useMonitorEdges = monitorEdges();
+  if (!useMonitorEdges) {
+    for (const auto &zone : zoneList) {
+      if ((activeSides & static_cast<int>(LeftMask)) && zone.x == unionLeft) {
+        addBarrier(++id, BarrierSide::Left, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(RightMask)) && zone.right() == unionRight) {
+        addBarrier(++id, BarrierSide::Right, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(TopMask)) && zone.y == unionTop) {
+        addBarrier(++id, BarrierSide::Top, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(BottomMask)) && zone.bottom() == unionBottom) {
+        addBarrier(++id, BarrierSide::Bottom, zone.x, zone.y, zone.width, zone.height);
+      }
     }
+  } else {
+    std::int32_t computerX = 0;
+    std::int32_t computerY = 0;
+    std::int32_t computerW = 0;
+    std::int32_t computerH = 0;
+    m_computer->getShape(computerX, computerY, computerW, computerH);
+    const int computerRight = computerX + computerW - 1;
+    const int computerBottom = computerY + computerH - 1;
+    const int portalLeft = unionLeft;
+    const int portalTop = unionTop;
+    const int portalRight = std::max(unionLeft, unionRight - 1);
+    const int portalBottom = std::max(unionTop, unionBottom - 1);
+    const auto edges = switchEdges();
+    constexpr int kPositionTolerance = 8;
 
-    if ((activeSides & static_cast<int>(RightMask)) && (x + static_cast<gint>(w)) == unionRight) {
-      addBarrier(++id, BarrierSide::Right, x, y, w, h);
-    }
+    const auto toComputerX = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, portalLeft, portalRight, computerX, computerRight);
+    };
+    const auto toComputerY = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, portalTop, portalBottom, computerY, computerBottom);
+    };
+    const auto toPortalX = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, computerX, computerRight, portalLeft, portalRight);
+    };
+    const auto toPortalY = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, computerY, computerBottom, portalTop, portalBottom);
+    };
 
-    if ((activeSides & static_cast<int>(TopMask)) && y == unionTop) {
-      addBarrier(++id, BarrierSide::Top, x, y, w, h);
-    }
+    const auto placeFree = [&](bool matchEdges) {
+      int placed = 0;
+      for (const auto &zone : zoneList) {
+        const struct Side
+        {
+          BarrierSide barrier;
+          Direction direction;
+          bool vertical;
+          gint line;
+          gint inclusive;
+          gint alongBegin;
+          gint alongEnd;
+        } sides[] = {
+            {BarrierSide::Left, Direction::Left, true, zone.x, zone.x, zone.y, zone.bottom()},
+            {BarrierSide::Right, Direction::Right, true, zone.right(), zone.right() - 1, zone.y, zone.bottom()},
+            {BarrierSide::Top, Direction::Top, false, zone.y, zone.y, zone.x, zone.right()},
+            {BarrierSide::Bottom, Direction::Bottom, false, zone.bottom(), zone.bottom() - 1, zone.x, zone.right()},
+        };
+        for (const auto &side : sides) {
+          const auto free = freeAlong(side.alongBegin, side.alongEnd, blockedIntervals(zone, side.barrier));
+          for (const auto &interval : free) {
+            if (interval.end <= interval.begin) {
+              continue;
+            }
+            const auto addSegment = [&](gint along0, gint along1) {
+              if (along1 < along0) {
+                std::swap(along0, along1);
+              }
+              gint x1 = 0;
+              gint y1 = 0;
+              gint x2 = 0;
+              gint y2 = 0;
+              if (side.vertical) {
+                x1 = x2 = side.line;
+                y1 = along0;
+                y2 = along1;
+              } else {
+                y1 = y2 = side.line;
+                x1 = along0;
+                x2 = along1;
+              }
+              addBarrierSegment(++id, side.barrier, zone.x, zone.y, zone.width, zone.height, x1, y1, x2, y2);
+              ++placed;
+            };
+            if (!matchEdges) {
+              addSegment(interval.begin, interval.end - 1);
+              continue;
+            }
 
-    if ((activeSides & static_cast<int>(BottomMask)) && (y + static_cast<gint>(h)) == unionBottom) {
-      addBarrier(++id, BarrierSide::Bottom, x, y, w, h);
+            const int computerPosition = side.vertical ? toComputerX(side.inclusive) : toComputerY(side.inclusive);
+            const int scaledBegin = side.vertical ? toComputerY(interval.begin) : toComputerX(interval.begin);
+            const int scaledEnd = side.vertical ? toComputerY(interval.end - 1) : toComputerX(interval.end - 1);
+            const int alongMin = std::min(scaledBegin, scaledEnd);
+            const int alongMax = std::max(scaledBegin, scaledEnd);
+            for (const auto &edge : edges) {
+              if (edge.side != side.direction || std::abs(edge.position - computerPosition) > kPositionTolerance) {
+                continue;
+              }
+              const int overlapBegin = std::max(edge.begin, alongMin);
+              const int overlapEnd = std::min(edge.end, alongMax);
+              if (overlapEnd < overlapBegin) {
+                continue;
+              }
+              gint portalBegin = 0;
+              gint portalEnd = 0;
+              if (side.vertical) {
+                portalBegin = std::clamp(toPortalY(overlapBegin), interval.begin, interval.end - 1);
+                portalEnd = std::clamp(toPortalY(overlapEnd), interval.begin, interval.end - 1);
+              } else {
+                portalBegin = std::clamp(toPortalX(overlapBegin), interval.begin, interval.end - 1);
+                portalEnd = std::clamp(toPortalX(overlapEnd), interval.begin, interval.end - 1);
+              }
+              addSegment(portalBegin, portalEnd);
+            }
+          }
+        }
+      }
+      return placed;
+    };
+
+    if (placeFree(true) == 0 && !edges.empty()) {
+      LOG_WARN("monitor switch edges did not match portal zones; capturing every free monitor edge");
+      placeFree(false);
     }
-    zones = zones->next;
   }
 
   GList *list = nullptr;

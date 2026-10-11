@@ -16,7 +16,10 @@
 #include "net/SocketException.h"
 #include "server/Server.h"
 
+#include <algorithm>
 #include <assert.h>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
 #include <istream>
 #include <ostream>
@@ -439,6 +442,10 @@ bool Config::operator==(const Config &x) const
     return false;
   }
 
+  if (m_monitorPlacements != x.m_monitorPlacements) {
+    return false;
+  }
+
   return true;
 }
 
@@ -527,6 +534,8 @@ void Config::readSection(ConfigReadContext &s)
     readSectionAliases(s);
   } else if (name == s_links) {
     readSectionLinks(s);
+  } else if (name == "layout") {
+    readSectionLayout(s);
   } else {
     throw ServerConfigReadException(s, "unknown section name \"%{1}\"", name);
   }
@@ -711,6 +720,147 @@ void Config::readSectionLinks(ConfigReadContext &s)
     }
   }
   throw ServerConfigReadException(s, "unexpected end of links section");
+}
+
+void Config::setMonitorPlacement(
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+)
+{
+  std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
+  if (name.empty() || monitors.empty()) {
+    m_monitorPlacements.erase(name);
+    return;
+  }
+  m_monitorPlacements.insert_or_assign(name, MonitorPlacement{originX, originY, std::move(monitors)});
+}
+
+void Config::clearMonitorLayout()
+{
+  m_monitorPlacements.clear();
+}
+
+bool Config::hasMonitorLayout() const
+{
+  return !m_monitorPlacements.empty();
+}
+
+void Config::readSectionLayout(ConfigReadContext &s)
+{
+  const auto trim = [](const std::string &text) {
+    const auto begin = text.find_first_not_of(" \t");
+    if (begin == std::string::npos) {
+      return std::string();
+    }
+    const auto end = text.find_last_not_of(" \t");
+    return text.substr(begin, end - begin + 1);
+  };
+  const auto parseInt = [&](const std::string &text, int32_t &out) {
+    if (text.empty()) {
+      return false;
+    }
+    errno = 0;
+    char *end = nullptr;
+    const long value = std::strtol(text.c_str(), &end, 10);
+    if (end == text.c_str() || *end != '\0' || errno == ERANGE || value < INT32_MIN || value > INT32_MAX) {
+      return false;
+    }
+    out = static_cast<int32_t>(value);
+    return true;
+  };
+  const auto splitComma = [&](const std::string &text) {
+    std::vector<std::string> parts;
+    std::string current;
+    for (const char ch : text) {
+      if (ch == ',') {
+        parts.push_back(trim(current));
+        current.clear();
+      } else {
+        current.push_back(ch);
+      }
+    }
+    parts.push_back(trim(current));
+    return parts;
+  };
+
+  std::string line;
+  std::string computer;
+  int32_t originX = 0;
+  int32_t originY = 0;
+  std::vector<deskflow::MonitorRect> monitors;
+  const auto commit = [&]() {
+    if (!computer.empty()) {
+      setMonitorPlacement(computer, originX, originY, monitors);
+    }
+    monitors.clear();
+    originX = 0;
+    originY = 0;
+  };
+
+  while (s.readLine(line)) {
+    if (line == "end") {
+      commit();
+      return;
+    }
+
+    if (!line.empty() && line.back() == ':') {
+      commit();
+      computer = line.substr(0, line.size() - 1);
+      if (!isValidComputerName(computer)) {
+        throw ServerConfigReadException(s, "invalid computer name \"%{1}\"", computer);
+      }
+      if (!isComputer(computer)) {
+        if (!addComputer(computer)) {
+          throw ServerConfigReadException(s, "duplicate computer name \"%{1}\"", computer);
+        }
+      }
+      if (!isCanonicalName(computer)) {
+        throw ServerConfigReadException(s, "cannot use computer name alias here");
+      }
+      continue;
+    }
+
+    if (computer.empty()) {
+      throw ServerConfigReadException(s, "argument before first computer");
+    }
+
+    const auto separator = line.find('=');
+    if (separator == std::string::npos) {
+      throw ServerConfigReadException(s, "missing = in layout");
+    }
+    const auto key = trim(line.substr(0, separator));
+    const auto value = trim(line.substr(separator + 1));
+    if (key == "origin") {
+      const auto parts = splitComma(value);
+      if (parts.size() != 2 || !parseInt(parts[0], originX) || !parseInt(parts[1], originY)) {
+        throw ServerConfigReadException(s, "invalid layout origin");
+      }
+    } else if (key == "monitor") {
+      const auto parts = splitComma(value);
+      if (parts.size() < 5) {
+        throw ServerConfigReadException(s, "invalid layout monitor");
+      }
+      int32_t x = 0;
+      int32_t y = 0;
+      int32_t width = 0;
+      int32_t height = 0;
+      const auto count = parts.size();
+      if (!parseInt(parts[count - 4], x) || !parseInt(parts[count - 3], y) || !parseInt(parts[count - 2], width) ||
+          !parseInt(parts[count - 1], height)) {
+        throw ServerConfigReadException(s, "invalid layout monitor");
+      }
+      std::string monitorName;
+      for (size_t index = 0; index + 4 < count; ++index) {
+        if (index != 0) {
+          monitorName += ", ";
+        }
+        monitorName += parts[index];
+      }
+      monitors.push_back(deskflow::MonitorRect{monitorName, x, y, width, height});
+    } else {
+      throw ServerConfigReadException(s, "unknown layout key \"%{1}\"", key);
+    }
+  }
+  throw ServerConfigReadException(s, "unexpected end of layout section");
 }
 
 void Config::readSectionAliases(ConfigReadContext &s)
@@ -1267,6 +1417,19 @@ std::ostream &operator<<(std::ostream &s, const Config &config)
     }
   }
   s << "end" << std::endl;
+
+  if (config.hasMonitorLayout()) {
+    s << "section: layout" << std::endl;
+    for (const auto &[name, placement] : config.m_monitorPlacements) {
+      s << "\t" << name << ":" << std::endl;
+      s << "\t\torigin = " << placement.originX << ", " << placement.originY << std::endl;
+      for (const auto &monitor : placement.monitors) {
+        s << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width << ", "
+          << monitor.height << std::endl;
+      }
+    }
+    s << "end" << std::endl;
+  }
 
   // options section
   s << "section: options" << std::endl;
