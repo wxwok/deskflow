@@ -186,19 +186,21 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $dir -Force
           $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      # PowerShell, not bash: the vcpkg toolchain path contains backslashes,
+      # and bash treats those as escapes (D:\a\... becomes D:a...).
       - name: Configure
-        shell: bash
+        shell: pwsh
         run: |
-          command -v ninja
-          command -v cl
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
-            -DDESKFLOW_FORCE_VERSION=1.27.1.1 \
-            -DPACKAGE_VERSION_LABEL=1.27.1.1 \
+          Get-Command ninja
+          Get-Command cl
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON `
+            -DDESKFLOW_FORCE_VERSION=1.27.1.1 `
+            -DPACKAGE_VERSION_LABEL=1.27.1.1 `
             ${{ steps.get-deps.outputs.vcpkg-cmake-config }}
 
       - name: Package
-        shell: bash
+        shell: pwsh
         run: cmake --build build --config Release -j8 --target package
 
       - name: Collect
