@@ -16,4 +16,7 @@ private Q_SLOTS:
   void edgeAdjacency();
   void travelMapping();
   void configRoundTrip();
+  void snapAdjacencyAndAlignment();
+  void snapRejectsOverlap();
+  void switchEdgeSegments();
 };

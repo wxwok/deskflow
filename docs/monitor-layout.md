@@ -43,6 +43,10 @@ Wayland input capture only notices an edge that has a pointer barrier, and a bar
 
 X11, Windows, and macOS report pointer motion. The server treats the edge pixel as the switch. The Windows hook is told about a bounding-box side only when a switch edge lies on that extreme, so it does not trap the cursor on a dead outer edge. Interior edges are seen because the hook forwards every move and the compositor clamps the cursor to the monitor.
 
+## Arrangement view
+
+The Monitor layout tab drags each client as one group. The server stays where it is. While dragging, a monitor edge within about 12 screen pixels of another computer's monitor edge snaps to it. The axes are independent: opposite edges meet with no gap (left against right, top against bottom), and parallel edges line up (top against top, and the same for the other sides). The nearest edge wins. A placement that would overlap another computer is moved to the nearest snapped position that only touches. Hold Alt or Shift while dragging to ignore the magnet. The origin boxes set an exact position, and the arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. Orange marks the edges that will switch the pointer.
+
 ## Example
 
 `docs/examples/monitor-layout.conf` places sur3 to the left of the server's lower-left monitors and a Windows laptop to the right of the lower built-in panel. See that file for the coordinates.

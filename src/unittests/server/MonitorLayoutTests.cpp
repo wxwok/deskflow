@@ -6,6 +6,7 @@
 
 #include "MonitorLayoutTests.h"
 
+#include "deskflow/MonitorSnap.h"
 #include "server/Config.h"
 #include "server/MonitorLayout.h"
 
@@ -188,6 +189,118 @@ end
   Config again(nullptr);
   second >> again;
   QVERIFY(again == parsed);
+}
+
+deskflow::SnapRect placed(int group, int32_t x, int32_t y, int32_t width, int32_t height)
+{
+  return {x, y, width, height, group};
+}
+
+void MonitorLayoutTests::snapAdjacencyAndAlignment()
+{
+  const std::vector<deskflow::SnapRect> still = {placed(0, 0, 0, 100, 100)};
+  const int32_t threshold = 15;
+
+  // Opposite edges meet, and the tops line up, on independent axes.
+  const auto both = deskflow::snapMonitorPlacement({placed(1, 90, 12, 50, 40)}, still, threshold, true);
+  QCOMPARE(both.dx, 10);
+  QCOMPARE(both.dy, -12);
+  QVERIFY(both.snappedX);
+  QVERIFY(both.snappedY);
+  QCOMPARE(static_cast<int>(both.guides.size()), 2);
+
+  // Farther than the threshold on every edge: stay put.
+  const auto far = deskflow::snapMonitorPlacement({placed(1, 130, 0, 50, 40)}, still, threshold, true);
+  QCOMPARE(far.dx, 0);
+  QCOMPARE(far.dy, 0);
+  QVERIFY(!far.snappedX);
+  QVERIFY(!far.snappedY);
+
+  // Two horizontal candidates: the nearer edge wins.
+  const std::vector<deskflow::SnapRect> pair = {placed(0, 0, 0, 100, 100), placed(0, 160, 0, 100, 100)};
+  const auto nearest = deskflow::snapMonitorPlacement({placed(1, 90, 0, 40, 100)}, pair, 40, true);
+  QCOMPARE(nearest.dx, 10);
+  QCOMPARE(nearest.dy, 0);
+
+  // A second monitor in the dragged group supplies the edge that is in range.
+  const auto grouped = deskflow::snapMonitorPlacement(
+      {placed(1, 50, 0, 100, 100), placed(1, 150, 0, 100, 100)}, {placed(0, 0, 0, 40, 100)}, threshold, true
+  );
+  QCOMPARE(grouped.dx, -10);
+  QCOMPARE(grouped.dy, 0);
+
+  // Already touching horizontally, so only the parallel top edges move.
+  const auto flush = deskflow::snapMonitorPlacement({placed(1, 100, 14, 80, 40)}, still, threshold, true);
+  QCOMPARE(flush.dx, 0);
+  QCOMPARE(flush.dy, -14);
+  QVERIFY(flush.snappedX);
+  QVERIFY(flush.snappedY);
+
+  // Exact entry (snapping off) keeps a position that does not overlap.
+  const auto exact = deskflow::snapMonitorPlacement({placed(1, 100, 14, 80, 40)}, still, threshold, false);
+  QCOMPARE(exact.dx, 0);
+  QCOMPARE(exact.dy, 0);
+  QVERIFY(exact.guides.empty());
+}
+
+void MonitorLayoutTests::snapRejectsOverlap()
+{
+  const std::vector<deskflow::SnapRect> still = {placed(0, 0, 0, 1000, 1000)};
+
+  // Inside, and no edge is within the threshold: push out to the nearest touch.
+  // Left and up cost the same; the left push is kept.
+  const auto pushed = deskflow::snapMonitorPlacement({placed(1, 10, 10, 100, 100)}, still, 5, true);
+  QCOMPARE(pushed.dx, -110);
+  QCOMPARE(pushed.dy, 0);
+  QVERIFY(!pushed.snappedX);
+  QVERIFY(pushed.guides.empty());
+
+  // Aligning both edges would stay buried inside. That snap is rejected.
+  const std::vector<deskflow::SnapRect> host = {placed(0, 0, 0, 200, 200)};
+  const auto rejected = deskflow::snapMonitorPlacement({placed(1, 5, 5, 100, 100)}, host, 15, true);
+  QCOMPARE(rejected.dx, -105);
+  QCOMPARE(rejected.dy, 0);
+  QVERIFY(!rejected.snappedX);
+
+  // An edge that is close enough pulls the group out to a touch instead of a push from the center.
+  const auto pulled = deskflow::snapMonitorPlacement({placed(1, 190, 50, 100, 100)}, host, 15, true);
+  QCOMPARE(pulled.dx, 10);
+  QCOMPARE(pulled.dy, 0);
+  QVERIFY(pulled.snappedX);
+
+  // Snapping off still refuses the overlap.
+  const auto free = deskflow::snapMonitorPlacement({placed(1, 10, 10, 100, 100)}, still, 15, false);
+  QCOMPARE(free.dx, -110);
+  QCOMPARE(free.dy, 0);
+}
+
+void MonitorLayoutTests::switchEdgeSegments()
+{
+  const auto touch = deskflow::switchEdgeSegments({placed(0, 0, 0, 100, 100), placed(1, 100, 40, 80, 30)});
+  QCOMPARE(static_cast<int>(touch.size()), 1);
+  QVERIFY(touch[0].vertical);
+  QCOMPARE(touch[0].position, 100);
+  QCOMPARE(touch[0].begin, 40);
+  QCOMPARE(touch[0].end, 70);
+
+  const auto gap = deskflow::switchEdgeSegments({placed(0, 0, 0, 100, 100), placed(1, 110, 40, 80, 30)});
+  QVERIFY(gap.empty());
+
+  // The same computer continues the top of the edge, so only the rest switches.
+  const auto blocked =
+      deskflow::switchEdgeSegments({placed(0, 0, 0, 100, 200), placed(0, 100, 0, 40, 80), placed(1, 100, 0, 50, 200)});
+  QCOMPARE(static_cast<int>(blocked.size()), 1);
+  QVERIFY(blocked[0].vertical);
+  QCOMPARE(blocked[0].position, 100);
+  QCOMPARE(blocked[0].begin, 80);
+  QCOMPARE(blocked[0].end, 200);
+
+  const auto bottom = deskflow::switchEdgeSegments({placed(0, 0, 0, 100, 100), placed(1, 10, 100, 30, 40)});
+  QCOMPARE(static_cast<int>(bottom.size()), 1);
+  QVERIFY(!bottom[0].vertical);
+  QCOMPARE(bottom[0].position, 100);
+  QCOMPARE(bottom[0].begin, 10);
+  QCOMPARE(bottom[0].end, 40);
 }
 
 QTEST_MAIN(MonitorLayoutTests)
