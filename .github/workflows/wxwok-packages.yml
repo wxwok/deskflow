@@ -21,13 +21,13 @@ permissions:
   contents: write
 
 env:
-  DESKFLOW_VERSION_FORCE: "1.27.1.1"
+  DESKFLOW_VERSION_FORCE: "1.27.1.2"
   CMAKE_COMMON: >-
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
     -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
     -DCMAKE_INSTALL_PREFIX=/usr
-    -DDESKFLOW_FORCE_VERSION=1.27.1.1
-    -DPACKAGE_VERSION_LABEL=1.27.1.1
+    -DDESKFLOW_FORCE_VERSION=1.27.1.2
+    -DPACKAGE_VERSION_LABEL=1.27.1.2
 
 jobs:
   linux-distro:
@@ -41,10 +41,10 @@ jobs:
         target:
           - name: debian-13
             container: debian:13
-            asset: deskflow-1.27.1.1-debian-13-amd64.deb
+            asset: deskflow-1.27.1.2-debian-13-amd64.deb
           - name: ubuntu-26.04
             container: ubuntu:26.04
-            asset: deskflow-1.27.1.1-ubuntu-26.04-amd64.deb
+            asset: deskflow-1.27.1.2-ubuntu-26.04-amd64.deb
     steps:
       - name: Install Git
         run: |
@@ -144,13 +144,13 @@ jobs:
           export QT_ROOT=/opt/qt/6.8.3/gcc_64
           export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
           chmod +x .github/scripts/bundle-ubuntu-deb.sh
-          .github/scripts/bundle-ubuntu-deb.sh build "$PWD" 1.27.1.1
+          .github/scripts/bundle-ubuntu-deb.sh build "$PWD" 1.27.1.2
 
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
           name: pkg-ubuntu-24.04
-          path: deskflow-1.27.1.1-ubuntu-24.04-amd64.deb
+          path: deskflow-1.27.1.2-ubuntu-24.04-amd64.deb
           if-no-files-found: error
 
   windows-x64:
@@ -194,11 +194,11 @@ jobs:
           Get-Command ninja
           Get-Command cl
           # Quote the dotted -D values. PowerShell otherwise splits
-          # 1.27.1.1 and CMake only receives 1.
+          # 1.27.1.2 and CMake only receives 1.
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             "-DSKIP_BUILD_TESTS=ON" "-DCMAKE_COMPILE_WARNING_AS_ERROR=ON" `
-            "-DDESKFLOW_FORCE_VERSION=1.27.1.1" `
-            "-DPACKAGE_VERSION_LABEL=1.27.1.1" `
+            "-DDESKFLOW_FORCE_VERSION=1.27.1.2" `
+            "-DPACKAGE_VERSION_LABEL=1.27.1.2" `
             ${{ steps.get-deps.outputs.vcpkg-cmake-config }}
 
       - name: Package
@@ -209,8 +209,8 @@ jobs:
         shell: pwsh
         run: |
           $expected = @(
-            "build/deskflow-1.27.1.1-win-x64.msi",
-            "build/deskflow-1.27.1.1-win-x64-portable.zip"
+            "build/deskflow-1.27.1.2-win-x64.msi",
+            "build/deskflow-1.27.1.2-win-x64-portable.zip"
           )
           foreach ($path in $expected) {
             if (-not (Test-Path $path)) {
@@ -256,7 +256,7 @@ jobs:
           echo "found=true" >> "$GITHUB_OUTPUT"
           sha256sum deskflow-* | tee SHA256SUMS
           {
-            cat docs/wxwok/RELEASE-wxwok-v1.27.1-monitorlayout.1.md
+            cat docs/wxwok/RELEASE-wxwok-v1.27.1-monitorlayout.2.md
             echo
             echo "## Build results / 构建结果"
             echo
@@ -275,7 +275,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
-          name: "wxwok ${{ github.ref_name }}"
+          name: ${{ github.ref_name }}
           prerelease: true
           make_latest: false
           generate_release_notes: false
