@@ -638,6 +638,16 @@ void CoreProcess::onCoreIpcMessageReceived(const QString &command, const QString
   } else if (command == "connectedClients") {
     const auto clients = args.isEmpty() ? QStringList() : args.split(",");
     Q_EMIT connectedClientsChanged(clients);
+  } else if (command == "monitorGeometry") {
+    const auto separator = args.indexOf(QLatin1Char('|'));
+    if (separator <= 0) {
+      qWarning("core ipc monitor geometry is missing a computer name");
+      return;
+    }
+    const auto computer = args.left(separator);
+    const auto monitors = args.mid(separator + 1);
+    Settings::setValue(QStringLiteral("internalConfig/reportedGeometry/%1").arg(computer), monitors);
+    Q_EMIT monitorGeometryChanged(computer, monitors);
   } else if (command == "secureSocket") {
     Q_EMIT secureSocket(true);
     if (args != m_secureSocketVersion) {

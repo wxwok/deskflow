@@ -21,6 +21,29 @@ class QString;
 class QFile;
 class ServerConfigDialog;
 
+//! One monitor in a computer's own coordinates, for the arrangement view.
+struct LayoutMonitor
+{
+  QString name;
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+
+  bool operator==(const LayoutMonitor &) const = default;
+};
+
+//! A computer placed on the shared virtual desktop.
+struct LayoutComputer
+{
+  QString name;
+  int originX = 0;
+  int originY = 0;
+  QList<LayoutMonitor> monitors;
+
+  bool operator==(const LayoutComputer &) const = default;
+};
+
 class ServerConfig : public ComputerConfig
 {
   friend class ServerConfigDialog;
@@ -56,6 +79,22 @@ public:
   QString configFile() const;
   bool useExternalConfig() const;
   void addClient(const QString &clientName);
+  bool useMonitorLayout() const
+  {
+    return m_useMonitorLayout;
+  }
+  void setUseMonitorLayout(bool use)
+  {
+    m_useMonitorLayout = use;
+  }
+  const QList<LayoutComputer> &monitorLayout() const
+  {
+    return m_monitorLayout;
+  }
+  void setMonitorLayout(const QList<LayoutComputer> &layout)
+  {
+    m_monitorLayout = layout;
+  }
 
 private:
   void recall();
@@ -87,6 +126,8 @@ private:
   HotkeyList m_Hotkeys;
 
   ComputerList m_computers;
+  QList<LayoutComputer> m_monitorLayout;
+  bool m_useMonitorLayout = false;
   int m_columns;
   int m_rows;
 };

@@ -745,6 +745,25 @@ Additionally, check you are able to %1 the server config file: %2</source>
     </message>
 </context>
 <context>
+    <name>MonitorLayoutWidget</name>
+    <message>
+        <source>Use monitor layout for pointer switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag a computer so its monitors touch the server. The server stays put. Edges that touch switch; edges that only meet another monitor of the same computer do not. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
@@ -1093,6 +1112,10 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>Enable lock to computer at startup</source>
         <translation>Включать привязку к компьютеру при запуске</translation>
+    </message>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

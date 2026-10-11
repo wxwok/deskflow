@@ -745,6 +745,25 @@ Inoltre, verifica di poter %1 il file di configurazione del server: %2</translat
     </message>
 </context>
 <context>
+    <name>MonitorLayoutWidget</name>
+    <message>
+        <source>Use monitor layout for pointer switching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag a computer so its monitors touch the server. The server stays put. Edges that touch switch; edges that only meet another monitor of the same computer do not. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NewComputerWidget</name>
     <message>
         <source>Unnamed</source>
@@ -1095,6 +1114,10 @@ L&apos;abilitazione di questa impostazione disabiliterà l&apos;interfaccia graf
     <message>
         <source>Enable lock to computer at startup</source>
         <translation type="unfinished">Abilita il blocco al computer all&apos;avvio</translation>
+    </message>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

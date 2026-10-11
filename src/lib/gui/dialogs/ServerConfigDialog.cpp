@@ -16,6 +16,7 @@
 #include "dialogs/ActionDialog.h"
 #include "dialogs/ComputerSettingsDialog.h"
 #include "dialogs/HotkeyDialog.h"
+#include "gui/widgets/MonitorLayoutWidget.h"
 #include "gui/widgets/SettingsDialogButtonBox.h"
 
 #include <QFileDialog>
@@ -48,6 +49,10 @@ ServerConfigDialog::ServerConfigDialog(QWidget *parent, ServerConfig &config)
 
   if (!deskflow::platform::isWindows())
     ui->cbWin32KeepForeground->setVisible(false);
+
+  m_monitorLayout = new MonitorLayoutWidget(m_serverConfig, this);
+  ui->tabWidget->addTab(m_monitorLayout, tr("Monitor layout"));
+  connect(m_monitorLayout, &MonitorLayoutWidget::layoutChanged, this, &ServerConfigDialog::setButtonBoxEnabledButtons);
   initConnections();
 }
 
@@ -434,6 +439,16 @@ void ServerConfigDialog::resetFromSettings()
   if (ui->tabWidget->currentWidget() == ui->tabComputers) {
     ui->computerSetupView->reset();
     ui->computerSetupView->update();
+  }
+  if (m_monitorLayout != nullptr) {
+    m_monitorLayout->reloadFromConfig();
+  }
+}
+
+void ServerConfigDialog::applyReportedGeometry(const QString &computer, const QString &monitors)
+{
+  if (m_monitorLayout != nullptr) {
+    m_monitorLayout->applyReportedGeometry(computer, monitors);
   }
 }
 

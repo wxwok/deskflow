@@ -13,6 +13,7 @@
 
 #include <QAbstractButton>
 #include <QPushButton>
+#include <QVariantMap>
 
 using enum ComputerConfig::SwitchCorner;
 using enum ComputerConfig::Fix;
@@ -51,8 +52,10 @@ bool ServerConfig::save(const QString &fileName) const
 
 bool ServerConfig::operator==(const ServerConfig &sc) const
 {
-  return m_computers == sc.m_computers && //
-         m_Hotkeys == sc.m_Hotkeys;       //
+  return m_computers == sc.m_computers &&               //
+         m_Hotkeys == sc.m_Hotkeys &&                   //
+         m_useMonitorLayout == sc.m_useMonitorLayout && //
+         m_monitorLayout == sc.m_monitorLayout;
 }
 
 void ServerConfig::save(QFile &file) const
@@ -77,6 +80,14 @@ void ServerConfig::commit()
   qDebug("committing server config");
 
   settings().beginGroup("internalConfig");
+
+  QVariantMap reportedGeometry;
+  settings().beginGroup("reportedGeometry");
+  for (const auto &key : settings().get().childKeys()) {
+    reportedGeometry.insert(key, settings().value(key));
+  }
+  settings().endGroup();
+
   settings().remove("");
 
   settings().beginWriteArray("screens");
@@ -97,6 +108,34 @@ void ServerConfig::commit()
     hotkeys()[i].saveSettings(settings().get());
   }
   settings().endArray();
+
+  settings().setValue("useMonitorLayout", m_useMonitorLayout);
+  settings().beginWriteArray("monitorLayout");
+  for (int i = 0; i < m_monitorLayout.size(); ++i) {
+    settings().setArrayIndex(i);
+    const auto &computer = m_monitorLayout.at(i);
+    settings().setValue("name", computer.name);
+    settings().setValue("originX", computer.originX);
+    settings().setValue("originY", computer.originY);
+    settings().beginWriteArray("monitors");
+    for (int monitorIndex = 0; monitorIndex < computer.monitors.size(); ++monitorIndex) {
+      settings().setArrayIndex(monitorIndex);
+      const auto &monitor = computer.monitors.at(monitorIndex);
+      settings().setValue("name", monitor.name);
+      settings().setValue("x", monitor.x);
+      settings().setValue("y", monitor.y);
+      settings().setValue("width", monitor.width);
+      settings().setValue("height", monitor.height);
+    }
+    settings().endArray();
+  }
+  settings().endArray();
+
+  settings().beginGroup("reportedGeometry");
+  for (auto it = reportedGeometry.cbegin(); it != reportedGeometry.cend(); ++it) {
+    settings().setValue(it.key(), it.value());
+  }
+  settings().endGroup();
 
   settings().endGroup();
 }
@@ -131,6 +170,35 @@ void ServerConfig::recall()
     Hotkey h;
     h.loadSettings(settings().get());
     hotkeys().append(h);
+  }
+  settings().endArray();
+
+  m_useMonitorLayout = settings().value("useMonitorLayout", false).toBool();
+  m_monitorLayout.clear();
+  const int numPlaced = settings().beginReadArray("monitorLayout");
+  for (int i = 0; i < numPlaced; ++i) {
+    settings().setArrayIndex(i);
+    LayoutComputer computer;
+    computer.name = settings().value("name").toString();
+    computer.originX = settings().value("originX").toInt();
+    computer.originY = settings().value("originY").toInt();
+    const int numMonitors = settings().beginReadArray("monitors");
+    for (int monitorIndex = 0; monitorIndex < numMonitors; ++monitorIndex) {
+      settings().setArrayIndex(monitorIndex);
+      LayoutMonitor monitor;
+      monitor.name = settings().value("name").toString();
+      monitor.x = settings().value("x").toInt();
+      monitor.y = settings().value("y").toInt();
+      monitor.width = settings().value("width").toInt();
+      monitor.height = settings().value("height").toInt();
+      if (monitor.width > 0 && monitor.height > 0) {
+        computer.monitors.append(monitor);
+      }
+    }
+    settings().endArray();
+    if (!computer.name.isEmpty() && !computer.monitors.isEmpty()) {
+      m_monitorLayout.append(computer);
+    }
   }
   settings().endArray();
 
@@ -172,6 +240,19 @@ QTextStream &operator<<(QTextStream &outStream, const ServerConfig &config)
   }
 
   outStream << "end" << Qt::endl << Qt::endl;
+
+  if (config.useMonitorLayout()) {
+    outStream << "section: layout" << Qt::endl;
+    for (const auto &computer : config.monitorLayout()) {
+      outStream << "\t" << computer.name << ":" << Qt::endl;
+      outStream << "\t\torigin = " << computer.originX << ", " << computer.originY << Qt::endl;
+      for (const auto &monitor : computer.monitors) {
+        outStream << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width
+                  << ", " << monitor.height << Qt::endl;
+      }
+    }
+    outStream << "end" << Qt::endl << Qt::endl;
+  }
 
   outStream << "section: options" << Qt::endl;
 
