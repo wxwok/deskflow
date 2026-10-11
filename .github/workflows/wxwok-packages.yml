@@ -1,0 +1,254 @@
+# Fork packages for the per-monitor layout integration branch.
+# Upstream continuous-integration.yml still builds every distro on master and v* tags.
+# This workflow only builds the machines this fork is installed on, and it skips
+# code signing, notarization, and the Homebrew tap dispatch (those need secrets).
+
+name: wxwok packages
+
+on:
+  push:
+    branches:
+      - cursor/wxwok-per-monitor-layout-936a
+    tags:
+      - "wxwok-v*"
+  workflow_dispatch:
+
+concurrency:
+  group: wxwok-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  DESKFLOW_VERSION_FORCE: "1.27.1.1"
+  CMAKE_COMMON: >-
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DDESKFLOW_FORCE_VERSION=1.27.1.1
+    -DPACKAGE_VERSION_LABEL=1.27.1.1
+
+jobs:
+  linux-distro:
+    name: ${{ matrix.target.name }}
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.target.container }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: debian-13
+            container: debian:13
+            asset: deskflow-1.27.1.1-debian-13-amd64.deb
+          - name: ubuntu-26.04
+            container: ubuntu:26.04
+            asset: deskflow-1.27.1.1-ubuntu-26.04-amd64.deb
+    steps:
+      - name: Install Git
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Distro
+        run: cat /etc/os-release
+
+      - name: Install dependencies
+        uses: ./.github/actions/install-dependencies
+        with:
+          like: debian
+
+      - name: Configure
+        run: ${{ env.CMAKE_COMMON }}
+
+      - name: Package
+        run: cmake --build build --config Release -j"$(nproc)" --target package
+
+      - name: Name package
+        run: |
+          deb=$(echo build/deskflow-*.deb)
+          cp "$deb" "${{ matrix.target.asset }}"
+          ls -lh "${{ matrix.target.asset }}"
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: pkg-${{ matrix.target.name }}
+          path: ${{ matrix.target.asset }}
+          if-no-files-found: error
+
+  ubuntu-24.04:
+    name: ubuntu-24.04
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    timeout-minutes: 90
+    steps:
+      - name: Install Git
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y \
+            build-essential cmake ninja-build pkg-config python3-pip python3-venv \
+            meson patchelf file dpkg-dev help2man ca-certificates \
+            libgl1-mesa-dev libglib2.0-dev libssl-dev libx11-dev libxtst-dev \
+            libxinerama-dev libxrandr-dev libxi-dev libxkbfile-dev libxkbcommon-dev \
+            libxkbregistry-dev libxext-dev libxss-dev libxcursor-dev libxfixes-dev \
+            libsm-dev libice-dev gobject-introspection libgirepository1.0-dev \
+            libwayland-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libfontconfig1-dev libfreetype6-dev libdbus-1-dev
+
+      - name: Build libei 1.4.1 and libportal 0.9.1
+        run: |
+          git clone --depth 1 --branch 1.4.1 https://gitlab.freedesktop.org/libinput/libei.git /tmp/libei
+          meson setup /tmp/libei/build /tmp/libei \
+            -Dprefix=/usr/local -Dtests=disabled -Dliboeffis=disabled -Ddocumentation=[]
+          meson install -C /tmp/libei/build
+          git clone --depth 1 --branch 0.9.1 https://github.com/flatpak/libportal.git /tmp/libportal
+          meson setup /tmp/libportal/build /tmp/libportal \
+            -Dprefix=/usr/local -Ddocs=false -Dvapi=false \
+            -Dbackend-gtk3=disabled -Dbackend-gtk4=disabled -Dbackend-qt5=disabled
+          meson install -C /tmp/libportal/build
+          ldconfig
+
+      - name: Install Qt 6.8.3
+        run: |
+          python3 -m pip install --break-system-packages aqtinstall
+          aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O /opt/qt
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+          export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
+          ${{ env.CMAKE_COMMON }} -DQt6_DIR=/opt/qt/6.8.3/gcc_64/lib/cmake/Qt6
+
+      - name: Build
+        run: |
+          export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
+          cmake --build build --config Release -j"$(nproc)"
+
+      - name: Bundle deb
+        run: |
+          export QT_ROOT=/opt/qt/6.8.3/gcc_64
+          export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
+          chmod +x .github/scripts/bundle-ubuntu-deb.sh
+          .github/scripts/bundle-ubuntu-deb.sh build "$PWD" 1.27.1.1
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: pkg-ubuntu-24.04
+          path: deskflow-1.27.1.1-ubuntu-24.04-amd64.deb
+          if-no-files-found: error
+
+  windows-x64:
+    name: windows-x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup VC++ environment
+        uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: amd64
+          spectre: true
+
+      - name: Install dependencies
+        id: get-deps
+        uses: ./.github/actions/install-dependencies
+        with:
+          qt-version: "6.12"
+          vcpkg-triplet: x64-windows-release
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+            -DDESKFLOW_FORCE_VERSION=1.27.1.1 \
+            -DPACKAGE_VERSION_LABEL=1.27.1.1 \
+            ${{ steps.get-deps.outputs.vcpkg-cmake-config }}
+
+      - name: Package
+        shell: bash
+        run: cmake --build build --config Release -j8 --target package
+
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p dist
+          find build -type f \( -name '*.msi' -o -name '*.zip' \) -exec cp {} dist/ \;
+          ls -lh dist
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: pkg-windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: pre-release
+    needs: [linux-distro, ubuntu-24.04, windows-x64]
+    if: always() && startsWith(github.ref, 'refs/tags/wxwok-v')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Checksums and notes
+        id: notes
+        run: |
+          if ! compgen -G 'deskflow-*' >/dev/null; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No packages were produced"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          sha256sum deskflow-* | tee SHA256SUMS
+          {
+            cat docs/wxwok/RELEASE-wxwok-v1.27.1-monitorlayout.1.md
+            echo
+            echo "## Build results / 构建结果"
+            echo
+            echo "- Debian 13 and Ubuntu 26.04: ${{ needs.linux-distro.result }}"
+            echo "- Ubuntu 24.04: ${{ needs.ubuntu-24.04.result }}"
+            echo "- Windows x64: ${{ needs.windows-x64.result }}"
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > release-notes.md
+
+      - name: Publish pre-release
+        if: steps.notes.outputs.found == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "wxwok ${{ github.ref_name }}"
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          body_path: release-notes.md
+          files: |
+            deskflow-*
+            SHA256SUMS

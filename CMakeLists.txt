@@ -45,8 +45,15 @@ set(DESKFLOW_VERSION_MINOR 27)
 set(DESKFLOW_VERSION_PATCH 0)
 set(DESKFLOW_VERSION_TWEAK 0)
 
-# Get the version from git if it's a git repository
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
+# Four-part override for fork packages (for example 1.27.1.1). Upstream
+# builds leave this unset and keep taking the version from git describe.
+if(DESKFLOW_FORCE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+  message(STATUS "Using forced Deskflow version ${DESKFLOW_FORCE_VERSION}")
+  set(DESKFLOW_VERSION_MAJOR "${CMAKE_MATCH_1}")
+  set(DESKFLOW_VERSION_MINOR "${CMAKE_MATCH_2}")
+  set(DESKFLOW_VERSION_PATCH "${CMAKE_MATCH_3}")
+  set(DESKFLOW_VERSION_TWEAK "${CMAKE_MATCH_4}")
+elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
   find_package(Git)
   if(GIT_FOUND)
     execute_process(
