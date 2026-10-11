@@ -193,6 +193,7 @@ private:
   std::int32_t m_cursorX = 0;
   std::int32_t m_cursorY = 0;
 
+  // Sub-pixel remainder of libei relative motion while the pointer is on a client.
   double m_bufferDX = 0;
   double m_bufferDY = 0;
 
