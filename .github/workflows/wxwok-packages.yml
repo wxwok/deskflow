@@ -21,13 +21,13 @@ permissions:
   contents: write
 
 env:
-  DESKFLOW_VERSION_FORCE: "1.27.1.2"
+  DESKFLOW_VERSION_FORCE: "1.27.1.3"
   CMAKE_COMMON: >-
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
     -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
     -DCMAKE_INSTALL_PREFIX=/usr
-    -DDESKFLOW_FORCE_VERSION=1.27.1.2
-    -DPACKAGE_VERSION_LABEL=1.27.1.2
+    -DDESKFLOW_FORCE_VERSION=1.27.1.3
+    -DPACKAGE_VERSION_LABEL=1.27.1.3
 
 jobs:
   linux-distro:
@@ -41,10 +41,10 @@ jobs:
         target:
           - name: debian-13
             container: debian:13
-            asset: deskflow-1.27.1.2-debian-13-amd64.deb
+            asset: deskflow-1.27.1.3-debian-13-amd64.deb
           - name: ubuntu-26.04
             container: ubuntu:26.04
-            asset: deskflow-1.27.1.2-ubuntu-26.04-amd64.deb
+            asset: deskflow-1.27.1.3-ubuntu-26.04-amd64.deb
     steps:
       - name: Install Git
         run: |
@@ -144,13 +144,13 @@ jobs:
           export QT_ROOT=/opt/qt/6.8.3/gcc_64
           export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
           chmod +x .github/scripts/bundle-ubuntu-deb.sh
-          .github/scripts/bundle-ubuntu-deb.sh build "$PWD" 1.27.1.2
+          .github/scripts/bundle-ubuntu-deb.sh build "$PWD" 1.27.1.3
 
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
           name: pkg-ubuntu-24.04
-          path: deskflow-1.27.1.2-ubuntu-24.04-amd64.deb
+          path: deskflow-1.27.1.3-ubuntu-24.04-amd64.deb
           if-no-files-found: error
 
   windows-x64:
@@ -194,11 +194,11 @@ jobs:
           Get-Command ninja
           Get-Command cl
           # Quote the dotted -D values. PowerShell otherwise splits
-          # 1.27.1.2 and CMake only receives 1.
+          # 1.27.1.3 and CMake only receives 1.
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             "-DSKIP_BUILD_TESTS=ON" "-DCMAKE_COMPILE_WARNING_AS_ERROR=ON" `
-            "-DDESKFLOW_FORCE_VERSION=1.27.1.2" `
-            "-DPACKAGE_VERSION_LABEL=1.27.1.2" `
+            "-DDESKFLOW_FORCE_VERSION=1.27.1.3" `
+            "-DPACKAGE_VERSION_LABEL=1.27.1.3" `
             ${{ steps.get-deps.outputs.vcpkg-cmake-config }}
 
       - name: Package
@@ -209,8 +209,8 @@ jobs:
         shell: pwsh
         run: |
           $expected = @(
-            "build/deskflow-1.27.1.2-win-x64.msi",
-            "build/deskflow-1.27.1.2-win-x64-portable.zip"
+            "build/deskflow-1.27.1.3-win-x64.msi",
+            "build/deskflow-1.27.1.3-win-x64-portable.zip"
           )
           foreach ($path in $expected) {
             if (-not (Test-Path $path)) {
