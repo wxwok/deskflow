@@ -32,11 +32,15 @@ public:
     int32_t originX = 0;
     int32_t originY = 0;
     std::vector<deskflow::MonitorRect> monitors;
+    //! Disabled computers keep their placement, but their edges are not switch targets.
+    bool enabled = true;
   };
 
   void clear();
-  void
-  setComputer(const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors);
+  void setComputer(
+      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+      bool enabled = true
+  );
   bool enabled() const;
   bool contains(const std::string &name) const;
   const std::vector<Placement> &computers() const

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "deskflow/MonitorSnap.h"
+#include "gui/config/LayoutClients.h"
 #include "gui/config/ServerConfig.h"
 
 #include <QSet>
@@ -17,7 +18,9 @@
 
 class QCheckBox;
 class QLabel;
+class QPushButton;
 class QSpinBox;
+class QVBoxLayout;
 
 //! Drag computers so their monitors share one virtual desktop.
 class MonitorLayoutWidget : public QWidget
@@ -28,10 +31,17 @@ public:
   explicit MonitorLayoutWidget(ServerConfig &config, QWidget *parent = nullptr);
 
   void reloadFromConfig();
+  void reloadDiscovery();
   void applyReportedGeometry(const QString &computer, const QString &body);
+  const QList<LayoutComputer> &layout() const
+  {
+    return m_layout;
+  }
 
 Q_SIGNALS:
   void layoutChanged();
+  //! The internal monitor layout was committed to the general config and the caller's ServerConfig.
+  void authoritativeLayoutChanged();
 
 protected:
   void paintEvent(QPaintEvent *event) override;
@@ -60,6 +70,13 @@ private:
   void reloadReported();
   QList<LayoutMonitor> parseMonitors(const QString &body) const;
   void ensureGridComputers();
+  void updateHint();
+  void refreshDiscovery();
+  void refreshParticipation();
+  void addDiscovered(const QString &name);
+  void toggleParticipation();
+  QString participationError(deskflow::LayoutWriteError error) const;
+  bool isExternal() const;
   std::vector<deskflow::SnapRect> rectsFor(int index, int originX, int originY) const;
   QPointF mapLayout(const Transform &transform, int32_t x, int32_t y) const;
 
@@ -70,7 +87,13 @@ private:
   QWidget *m_controls = nullptr;
   QCheckBox *m_enabled = nullptr;
   QLabel *m_hint = nullptr;
+  QLabel *m_discoveryLabel = nullptr;
+  QLabel *m_status = nullptr;
+  QWidget *m_discoveryHost = nullptr;
+  QVBoxLayout *m_discoveryLayout = nullptr;
+  QPushButton *m_participation = nullptr;
   QLabel *m_originLabel = nullptr;
+  bool m_reloading = false;
   QSpinBox *m_originX = nullptr;
   QSpinBox *m_originY = nullptr;
   int m_dragIndex = -1;

@@ -7,9 +7,11 @@
 #include "gui/widgets/MonitorLayoutWidget.h"
 
 #include "common/Settings.h"
+#include "gui/config/LayoutClients.h"
 
 #include <QCheckBox>
 #include <QEvent>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -44,15 +46,16 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   auto *controls = new QVBoxLayout(m_controls);
   controls->setContentsMargins(0, 0, 0, 0);
   m_enabled = new QCheckBox(tr("Use monitor layout for pointer switching"), m_controls);
-  m_hint = new QLabel(
-      tr("Drag a computer so its monitors touch another computer. Edges within about 12 px snap together "
-         "and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; "
-         "hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. "
-         "Leave this off to keep the grid links."),
-      m_controls
-  );
+  m_hint = new QLabel(m_controls);
   m_hint->setWordWrap(true);
+  m_discoveryLabel = new QLabel(tr("Clients not in the layout"), m_controls);
+  m_discoveryHost = new QWidget(m_controls);
+  m_discoveryLayout = new QVBoxLayout(m_discoveryHost);
+  m_discoveryLayout->setContentsMargins(0, 0, 0, 0);
+  m_status = new QLabel(m_controls);
+  m_status->setWordWrap(true);
   auto *reload = new QPushButton(tr("Reload reported geometry"), m_controls);
+  m_participation = new QPushButton(tr("Disable"), m_controls);
   auto *originRow = new QHBoxLayout();
   m_originLabel = new QLabel(tr("No computer selected"), m_controls);
   m_originX = new QSpinBox(m_controls);
@@ -71,9 +74,13 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   originRow->addWidget(m_originLabel);
   originRow->addWidget(m_originX);
   originRow->addWidget(m_originY);
+  originRow->addWidget(m_participation);
   originRow->addStretch(1);
   controls->addWidget(m_enabled);
   controls->addWidget(m_hint);
+  controls->addWidget(m_discoveryLabel);
+  controls->addWidget(m_discoveryHost);
+  controls->addWidget(m_status);
   controls->addLayout(originRow);
   layout->addWidget(m_controls);
   layout->addStretch(1);
@@ -81,9 +88,13 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   setFocusPolicy(Qt::StrongFocus);
 
   connect(m_enabled, &QCheckBox::toggled, this, [this](bool checked) {
+    if (m_reloading) {
+      return;
+    }
     m_config.setUseMonitorLayout(checked);
     store();
   });
+  connect(m_participation, &QPushButton::clicked, this, &MonitorLayoutWidget::toggleParticipation);
   connect(reload, &QPushButton::clicked, this, [this]() {
     reloadReported();
     store();
@@ -103,23 +114,88 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   reloadFromConfig();
 }
 
+bool MonitorLayoutWidget::isExternal() const
+{
+  return m_config.useExternalConfig();
+}
+
+void MonitorLayoutWidget::updateHint()
+{
+  const auto drag =
+      tr("Drag a computer so its monitors touch another computer. Edges within about 12 px snap together "
+         "and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; "
+         "hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. "
+         "Leave this off to keep the grid links.");
+  if (!isExternal()) {
+    m_hint->setText(drag);
+    m_enabled->setEnabled(true);
+    m_enabled->setToolTip(QString());
+    return;
+  }
+  m_hint->setText(
+      tr("An external server config is in use. Pointer switching follows section: layout in that file. "
+         "Add writes that section after saving a .bak backup, and registers the computer in the general "
+         "computer table. This view does not change the internal layout.") +
+      QLatin1Char('\n') + drag
+  );
+  m_enabled->setEnabled(false);
+  m_enabled->setToolTip(
+      tr("Pointer switching follows section: layout in the external server config, not this checkbox.")
+  );
+}
+
+QString MonitorLayoutWidget::participationError(deskflow::LayoutWriteError error) const
+{
+  switch (error) {
+  case deskflow::LayoutWriteError::InvalidName:
+    return tr("The computer name is not valid.");
+  case deskflow::LayoutWriteError::AlreadyPlaced:
+    return tr("That computer is already in the layout.");
+  case deskflow::LayoutWriteError::ReadFailed:
+    return tr("Could not read the server config file.");
+  case deskflow::LayoutWriteError::BackupFailed:
+    return tr("Could not back up the server config file.");
+  case deskflow::LayoutWriteError::WriteFailed:
+    return tr("Could not write the server config file.");
+  case deskflow::LayoutWriteError::None:
+    break;
+  }
+  return {};
+}
+
 void MonitorLayoutWidget::reloadFromConfig()
 {
-  m_layout = m_config.monitorLayout();
+  m_reloading = true;
   m_serverName = m_config.getServerName();
   m_enabled->setChecked(m_config.useMonitorLayout());
-  ensureGridComputers();
-  reloadReported();
-  if (m_config.useExternalConfig()) {
-    m_hint->setText(
-        tr("An external server config is in use. Pointer switching follows section: layout in that file. "
-           "This view edits the internal config, which is used when external config is turned off.")
-    );
+  m_status->clear();
+  if (isExternal()) {
+    QFile file(m_config.configFile());
+    if (!file.open(QIODevice::ReadOnly)) {
+      m_layout.clear();
+      m_status->setText(participationError(deskflow::LayoutWriteError::ReadFailed));
+    } else {
+      m_layout = deskflow::parseLayoutSection(QString::fromUtf8(file.readAll()));
+    }
+  } else {
+    m_layout = m_config.monitorLayout();
+    ensureGridComputers();
   }
+  reloadReported();
+  updateHint();
   if (m_selected >= m_layout.size()) {
     m_selected = -1;
   }
   syncOriginFields();
+  refreshDiscovery();
+  refreshParticipation();
+  m_reloading = false;
+  update();
+}
+
+void MonitorLayoutWidget::reloadDiscovery()
+{
+  refreshDiscovery();
   update();
 }
 
@@ -211,12 +287,14 @@ void MonitorLayoutWidget::applyReportedGeometry(const QString &computerName, con
   if (monitors.isEmpty()) {
     return;
   }
-  Settings::setValue(QStringLiteral("internalConfig/reportedGeometry/%1").arg(computerName), body);
+  const auto key = QStringLiteral("internalConfig/reportedGeometry/%1").arg(computerName);
+  Settings::setValue(key, body);
+  Settings::proxy().setValue(key, body);
   for (auto &computer : m_layout) {
     if (computer.name.compare(computerName, Qt::CaseInsensitive) == 0) {
       computer.monitors = monitors;
       m_reported.insert(computer.name);
-      if (m_config.useMonitorLayout()) {
+      if (isExternal() || m_config.useMonitorLayout()) {
         store();
       }
       update();
@@ -224,29 +302,128 @@ void MonitorLayoutWidget::applyReportedGeometry(const QString &computerName, con
     }
   }
 
-  int right = 0;
-  for (const auto &computer : m_layout) {
-    for (const auto &monitor : computer.monitors) {
-      right = std::max(right, computer.originX + monitor.x + monitor.width);
-    }
-  }
-  LayoutComputer placed;
-  placed.name = computerName;
-  placed.originX = m_layout.isEmpty() ? 0 : right;
-  placed.originY = 0;
-  placed.monitors = monitors;
-  m_layout.append(placed);
-  m_reported.insert(computerName);
-  if (m_config.useMonitorLayout()) {
-    store();
-  }
+  // A new client stays in the discovery list until Add places it.
+  refreshDiscovery();
   update();
 }
 
 void MonitorLayoutWidget::store()
 {
+  if (m_reloading) {
+    return;
+  }
+  if (isExternal()) {
+    const auto written = deskflow::writeLayoutFile(m_config.configFile(), m_layout);
+    if (!written.ok) {
+      m_status->setText(participationError(written.error));
+    }
+    return;
+  }
   m_config.setMonitorLayout(m_layout);
   Q_EMIT layoutChanged();
+}
+
+void MonitorLayoutWidget::refreshDiscovery()
+{
+  while (QLayoutItem *item = m_discoveryLayout->takeAt(0)) {
+    if (auto *widget = item->widget()) {
+      widget->deleteLater();
+    }
+    delete item;
+  }
+
+  QStringList placed;
+  for (const auto &computer : m_layout) {
+    placed.append(computer.name);
+  }
+  const auto waiting =
+      deskflow::unplacedClients(deskflow::connectedComputerNames(), deskflow::reportedComputerNames(), placed);
+  if (waiting.isEmpty()) {
+    auto *empty = new QLabel(tr("No clients are waiting to be added."), m_discoveryHost);
+    empty->setWordWrap(true);
+    m_discoveryLayout->addWidget(empty);
+    return;
+  }
+
+  for (const auto &client : waiting) {
+    auto *row = new QWidget(m_discoveryHost);
+    auto *rowLayout = new QHBoxLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    QString detail;
+    if (client.connected && client.reported) {
+      detail = tr("Connected, reported geometry");
+    } else if (client.connected) {
+      detail = tr("Connected");
+    } else {
+      detail = tr("Reported geometry");
+    }
+    rowLayout->addWidget(new QLabel(QStringLiteral("%1 - %2").arg(client.name, detail), row));
+    auto *add = new QPushButton(tr("Add"), row);
+    add->setObjectName(QStringLiteral("add-%1").arg(client.name));
+    rowLayout->addWidget(add);
+    rowLayout->addStretch(1);
+    const auto name = client.name;
+    connect(add, &QPushButton::clicked, this, [this, name]() { addDiscovered(name); }, Qt::QueuedConnection);
+    m_discoveryLayout->addWidget(row);
+  }
+}
+
+void MonitorLayoutWidget::refreshParticipation()
+{
+  const bool selected = m_selected >= 0 && m_selected < m_layout.size();
+  const bool server = selected && m_layout.at(m_selected).name.compare(m_serverName, Qt::CaseInsensitive) == 0;
+  m_participation->setEnabled(selected && !server);
+  if (!selected || server) {
+    m_participation->setText(tr("Disable"));
+    m_participation->setToolTip(
+        tr("Disable the selected computer. Its position is kept, and the pointer will not switch to it.")
+    );
+    return;
+  }
+  const bool disabled = deskflow::isComputerDisabled(m_layout.at(m_selected).name);
+  m_participation->setText(disabled ? tr("Enable") : tr("Disable"));
+  m_participation->setToolTip(
+      disabled ? tr("Enable the selected computer and restore pointer switching.")
+               : tr("Disable the selected computer. Its position is kept, and the pointer will not switch to it.")
+  );
+}
+
+void MonitorLayoutWidget::addDiscovered(const QString &name)
+{
+  const auto monitors = deskflow::reportedMonitors(name);
+  const auto result = deskflow::addComputerToActiveLayout(
+      isExternal(), m_config.configFile(), isExternal() ? nullptr : &m_config, m_layout, name, monitors
+  );
+  if (!result.ok) {
+    m_status->setText(participationError(result.error));
+    return;
+  }
+  m_layout = result.layout;
+  if (!monitors.isEmpty()) {
+    m_reported.insert(result.layout.isEmpty() ? name : result.layout.last().name);
+  }
+  m_status->clear();
+  if (!isExternal()) {
+    Q_EMIT authoritativeLayoutChanged();
+    Q_EMIT layoutChanged();
+  }
+  refreshDiscovery();
+  refreshParticipation();
+  update();
+}
+
+void MonitorLayoutWidget::toggleParticipation()
+{
+  if (m_selected < 0 || m_selected >= m_layout.size()) {
+    return;
+  }
+  const auto &computer = m_layout.at(m_selected);
+  if (computer.name.compare(m_serverName, Qt::CaseInsensitive) == 0) {
+    return;
+  }
+  deskflow::setComputerDisabled(computer.name, !deskflow::isComputerDisabled(computer.name));
+  refreshParticipation();
+  update();
 }
 
 MonitorLayoutWidget::Transform MonitorLayoutWidget::viewTransform() const
@@ -356,6 +533,7 @@ void MonitorLayoutWidget::syncOriginFields()
   m_originY->setEnabled(editable);
   if (!selected) {
     m_originLabel->setText(tr("No computer selected"));
+    refreshParticipation();
     return;
   }
   const auto &computer = m_layout.at(m_selected);
@@ -364,6 +542,7 @@ void MonitorLayoutWidget::syncOriginFields()
   m_originX->setValue(computer.originX);
   m_originY->setValue(computer.originY);
   m_updatingOrigin = false;
+  refreshParticipation();
 }
 
 void MonitorLayoutWidget::nudge(int dx, int dy, bool enableSnap)
@@ -398,7 +577,9 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
   for (int index = 0; index < m_layout.size(); ++index) {
     const auto &computer = m_layout.at(index);
     const bool server = computer.name == m_serverName;
-    const QColor fill = server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4];
+    const bool disabled = deskflow::isComputerDisabled(computer.name);
+    const QColor fill =
+        disabled ? QColor(90, 90, 90) : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
     const bool reported = m_reported.contains(computer.name);
     const bool selected = index == m_selected;
     for (const auto &monitor : computer.monitors) {
@@ -418,6 +599,9 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       painter.setPen(Qt::white);
       painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignTop, computer.name);
       painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignBottom, monitor.name);
+      if (disabled) {
+        painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Disabled"));
+      }
     }
   }
 

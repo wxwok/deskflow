@@ -33,7 +33,7 @@ void MonitorLayout::clear()
 }
 
 void MonitorLayout::setComputer(
-    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors, bool enabled
 )
 {
   std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
@@ -47,11 +47,12 @@ void MonitorLayout::setComputer(
       placement.originX = originX;
       placement.originY = originY;
       placement.monitors = std::move(monitors);
+      placement.enabled = enabled;
       return;
     }
   }
 
-  m_computers.push_back(Placement{name, originX, originY, std::move(monitors)});
+  m_computers.push_back(Placement{name, originX, originY, std::move(monitors), enabled});
 }
 
 bool MonitorLayout::enabled() const
@@ -78,6 +79,9 @@ std::vector<MonitorLayout::GlobalMonitor> MonitorLayout::globals() const
 {
   std::vector<GlobalMonitor> all;
   for (const auto &placement : m_computers) {
+    if (!placement.enabled) {
+      continue;
+    }
     for (const auto &monitor : placement.monitors) {
       all.push_back(GlobalMonitor{placement.name, monitor, placement.originX, placement.originY});
     }

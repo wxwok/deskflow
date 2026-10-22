@@ -851,6 +851,10 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
 
 bool Server::switchByLayout(const deskflow::MonitorCrossing &crossing, int32_t xActive, int32_t yActive)
 {
+  if (m_config != nullptr && m_config->isComputerDisabled(crossing.computer)) {
+    LOG_WARN("not switching to disabled computer \"%s\"", crossing.computer.c_str());
+    return false;
+  }
   auto *destination = clientByCanonicalName(crossing.computer);
   if (destination == nullptr || destination == m_active) {
     return false;
@@ -879,7 +883,8 @@ void Server::rebuildMonitorLayout()
         monitors = placement.monitors;
       }
       const auto canonical = getName(client);
-      m_monitorLayout.setComputer(canonical, placement.originX, placement.originY, std::move(monitors));
+      const bool enabled = m_config == nullptr || !m_config->isComputerDisabled(canonical);
+      m_monitorLayout.setComputer(canonical, placement.originX, placement.originY, std::move(monitors), enabled);
     }
   }
 
@@ -1512,6 +1517,11 @@ void Server::handleClientCloseTimeout(BaseClientProxy *client)
 void Server::handleSwitchToComputerEvent(const Event &event)
 {
   const auto *info = static_cast<SwitchToComputerInfo *>(event.getData());
+
+  if (m_config != nullptr && m_config->isComputerDisabled(info->m_computer)) {
+    LOG_WARN("ignoring switchToScreen(%s): computer is disabled", info->m_computer.c_str());
+    return;
+  }
 
   ClientList::const_iterator index = m_clients.find(info->m_computer);
   if (index == m_clients.end()) {

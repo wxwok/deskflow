@@ -9,7 +9,9 @@
 #include "server/Config.h"
 
 #include "base/IEventQueue.h"
+#include "base/Log.h"
 #include "common/KeyboardModifier.h"
+#include "common/Settings.h"
 #include "deskflow/KeyMap.h"
 #include "deskflow/KeyTypes.h"
 #include "deskflow/OptionTypes.h"
@@ -120,6 +122,10 @@ bool Config::addComputer(const std::string &name)
   if (superModifier.isEmpty())
     superModifier = kModifierNameSuper;
   addOption(name, kOptionModifierMapForSuper, modifierIDValueFromString(superModifier));
+
+  if (Settings::value(Settings::Computer::Disabled.arg(computer)).toBool()) {
+    m_disabled.insert(name);
+  }
 
   return true;
 }
@@ -294,6 +300,15 @@ bool Config::isComputer(const std::string &name) const
   return m_nameToCanonicalName.contains(name);
 }
 
+bool Config::isComputerDisabled(const std::string &name) const
+{
+  const auto canonical = getCanonicalName(name);
+  if (!canonical.empty()) {
+    return m_disabled.contains(canonical);
+  }
+  return m_disabled.contains(name);
+}
+
 bool Config::isCanonicalName(const std::string &name) const
 {
   return (!name.empty() && CaselessCmp::equal(getCanonicalName(name), name));
@@ -443,6 +458,10 @@ bool Config::operator==(const Config &x) const
   }
 
   if (m_monitorPlacements != x.m_monitorPlacements) {
+    return false;
+  }
+
+  if (m_disabled != x.m_disabled) {
     return false;
   }
 
@@ -630,6 +649,12 @@ void Config::readSectionOptions(ConfigReadContext &s)
       }
     }
 
+    if (s.ruleSkipped()) {
+      LOG_WARN("skipped hotkey on line %d", s.getLineNumber());
+      s.resetRuleSkip();
+      continue;
+    }
+
     // add rule
     m_inputFilter.addFilterRule(rule);
   }
@@ -711,6 +736,10 @@ void Config::readSectionLinks(ConfigReadContext &s)
       }
       if (!isComputer(dstComputer)) {
         throw ServerConfigReadException(s, "unknown computer name \"%{1}\"", dstComputer);
+      }
+      if (isComputerDisabled(computer) || isComputerDisabled(dstComputer)) {
+        LOG_WARN("skipping link from \"%s\" to \"%s\": computer is disabled", computer.c_str(), dstComputer.c_str());
+        continue;
       }
       if (!connect(
               computer, dir, srcInterval.first, srcInterval.second, dstComputer, dstInterval.first, dstInterval.second
@@ -990,13 +1019,21 @@ void Config::parseAction(
     }
 
     std::string computer = args[0];
-    if (isComputer(computer)) {
+    if (computer.empty()) {
+      action = new InputFilter::SwitchToComputerAction(m_events, computer);
+    } else if (!isComputer(computer)) {
+      LOG_WARN("skipping hotkey switchToScreen(%s): unknown computer", computer.c_str());
+      s.skipRule();
+      return;
+    } else {
       computer = getCanonicalName(computer);
-    } else if (!computer.empty()) {
-      throw ServerConfigReadException(s, "unknown computer name in switchToScreen");
+      if (isComputerDisabled(computer)) {
+        LOG_WARN("skipping hotkey switchToScreen(%s): computer is disabled", computer.c_str());
+        s.skipRule();
+        return;
+      }
+      action = new InputFilter::SwitchToComputerAction(m_events, computer);
     }
-
-    action = new InputFilter::SwitchToComputerAction(m_events, computer);
   }
 
   else if (name == "switchInDirection") {

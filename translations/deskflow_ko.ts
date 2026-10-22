@@ -755,10 +755,6 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>No computer selected</source>
         <translation type="unfinished"></translation>
     </message>
@@ -768,6 +764,78 @@ Additionally, check you are able to %1 the server config file: %2</source>
     </message>
     <message>
         <source>Drag a computer so its monitors touch another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clients not in the layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation type="unfinished">비활성화</translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. Add writes that section after saving a .bak backup, and registers the computer in the general computer table. This view does not change the internal layout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer switching follows section: layout in the external server config, not this checkbox.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer name is not valid.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That computer is already in the layout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not read the server config file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not back up the server config file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not write the server config file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No clients are waiting to be added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected, reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reported geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable the selected computer. Its position is kept, and the pointer will not switch to it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable the selected computer and restore pointer switching.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disabled</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

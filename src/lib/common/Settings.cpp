@@ -515,8 +515,8 @@ void Settings::removeUnknownComputers(const QStringList &knownComputers)
 
 QVariant Settings::computerDefaults(const QString &key)
 {
-  if (key.contains(QStringLiteral("halfDuplex")) || key.contains("xtestIsXineramaUnaware") || key.contains("X11") ||
-      key.contains("Left") || key.contains("Right"))
+  if (key == QLatin1String("disabled") || key.contains(QStringLiteral("halfDuplex")) ||
+      key.contains("xtestIsXineramaUnaware") || key.contains("X11") || key.contains("Left") || key.contains("Right"))
     return false;
   if (key.endsWith("switchCornerSize"))
     return 0;
@@ -533,6 +533,11 @@ QVariant Settings::computerDefaults(const QString &key)
   if (key == "modifierSuper")
     return keyboardModifierToOption(KeyboardModifier::Super);
   return QVariant();
+}
+
+QSettings &Settings::store()
+{
+  return *instance()->m_settings;
 }
 
 QStringList Settings::knownComputers()

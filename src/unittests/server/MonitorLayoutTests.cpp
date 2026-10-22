@@ -6,9 +6,15 @@
 
 #include "MonitorLayoutTests.h"
 
+#include "arch/Arch.h"
+#include "base/Log.h"
+#include "common/Settings.h"
 #include "deskflow/MonitorSnap.h"
 #include "server/Config.h"
 #include "server/MonitorLayout.h"
+
+#include <QDir>
+#include <QFile>
 
 #include <sstream>
 
@@ -58,6 +64,15 @@ std::optional<deskflow::MonitorCrossing> hit(const MonitorLayout &layout, const 
 }
 
 } // namespace
+
+void MonitorLayoutTests::initTestCase()
+{
+  QDir dir;
+  QVERIFY(dir.mkpath(m_settingsPath));
+  QFile::remove(m_settingsFile);
+  Settings::setSettingsFile(m_settingsFile);
+  Settings::setStateFile(m_stateFile);
+}
 
 void MonitorLayoutTests::edgeAdjacency()
 {
@@ -301,6 +316,81 @@ void MonitorLayoutTests::switchEdgeSegments()
   QCOMPARE(bottom[0].position, 100);
   QCOMPARE(bottom[0].begin, 10);
   QCOMPARE(bottom[0].end, 40);
+}
+
+void MonitorLayoutTests::disabledComputerIsNotASwitchTarget()
+{
+  MonitorLayout layout;
+  layout.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true);
+  layout.setComputer("sp7", 1920, 0, {monitor("sp7", 0, 0, 2736, 1824)}, false);
+  QVERIFY(layout.contains("sp7"));
+  QVERIFY(!hit(layout, "work", 1919, 100).has_value());
+  QVERIFY(layout.switchEdges("work").empty());
+
+  layout.setComputer("sp7", 1920, 0, {monitor("sp7", 0, 0, 2736, 1824)}, true);
+  const auto crossed = hit(layout, "work", 1919, 100);
+  QVERIFY(crossed.has_value());
+  QVERIFY(crossed->computer == "sp7");
+  QVERIFY(!layout.switchEdges("work").empty());
+}
+
+void MonitorLayoutTests::unknownOrDisabledSwitchIsSkipped()
+{
+  // Options parsing builds a listen address, and release builds still call Log::getInstance().
+  static Arch arch;
+#if defined(Q_OS_WIN)
+  arch.init();
+#else
+  (void)arch;
+#endif
+  static Log log(true);
+
+  Settings::setValue(Settings::Computer::Name.arg(QStringLiteral("work")), QStringLiteral("work"));
+  Settings::setValue(Settings::Computer::Name.arg(QStringLiteral("sp7")), QStringLiteral("sp7"));
+  Settings::setValue(Settings::Computer::Disabled.arg(QStringLiteral("sp7")), true);
+  Settings::proxy().setValue(Settings::Computer::Name.arg(QStringLiteral("work")), QStringLiteral("work"));
+  Settings::proxy().setValue(Settings::Computer::Name.arg(QStringLiteral("sp7")), QStringLiteral("sp7"));
+  Settings::proxy().setValue(Settings::Computer::Disabled.arg(QStringLiteral("sp7")), true);
+
+  const char *text = R"(section: links
+	work:
+		right = sp7
+	sp7:
+		left = work
+end
+section: layout
+	work:
+		origin = 0, 0
+		monitor = work, 0, 0, 1920, 1080
+	sp7:
+		origin = 1920, 0
+		monitor = sp7, 0, 0, 2736, 1824
+end
+section: options
+	keystroke(F1) = switchToScreen(sp7)
+	keystroke(F2) = switchToScreen(missing)
+	keystroke(F3) = switchToScreen(work)
+end
+)";
+
+  std::stringstream input(text);
+  Config parsed(nullptr);
+  input >> parsed;
+
+  QVERIFY(parsed.isComputer("sp7"));
+  QVERIFY(parsed.isComputer("work"));
+  QVERIFY(parsed.isComputerDisabled("sp7"));
+  QVERIFY(!parsed.isComputerDisabled("work"));
+  QVERIFY(!parsed.isComputer("missing"));
+  QCOMPARE(parsed.getNeighbor("work", Direction::Right, 0.5f, nullptr), std::string());
+  QCOMPARE(parsed.getNeighbor("sp7", Direction::Left, 0.5f, nullptr), std::string());
+  QVERIFY(parsed.monitorPlacements().find("sp7") != parsed.monitorPlacements().end());
+  QCOMPARE(parsed.monitorPlacements().find("sp7")->second.originX, 1920);
+  QCOMPARE(parsed.getInputFilter()->getNumRules(), 1u);
+  const auto rule = parsed.getInputFilter()->getRule(0).format();
+  QVERIFY(rule.find("switchToScreen(work)") != std::string::npos);
+  QVERIFY(rule.find("sp7") == std::string::npos);
+  QVERIFY(rule.find("missing") == std::string::npos);
 }
 
 QTEST_MAIN(MonitorLayoutTests)
