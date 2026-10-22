@@ -84,6 +84,9 @@ void ServerConfigDialog::save()
       return;
     }
   }
+  if (m_monitorLayout != nullptr && !m_monitorLayout->commitPendingLayout()) {
+    return;
+  }
   // now that the dialog has been accepted, copy the new server config to the
   // original one, which is a reference to the one in MainWindow.
   setOriginalServerConfig(serverConfig());
@@ -686,7 +689,9 @@ bool ServerConfigDialog::isGeneralConfigDefault() const
 void ServerConfigDialog::setButtonBoxEnabledButtons() const
 {
   const bool writable = Settings::isWritable();
-  m_buttonBox->enableSave(writable && (isGeneralConfigModified() || !(m_originalServerConfig == m_serverConfig)));
-  m_buttonBox->enableReset(writable && (isGeneralConfigModified() || !(m_originalServerConfig == m_serverConfig)));
+  const bool layoutPending = m_monitorLayout != nullptr && m_monitorLayout->hasPendingLayoutWrite();
+  const bool modified = isGeneralConfigModified() || layoutPending || !(m_originalServerConfig == m_serverConfig);
+  m_buttonBox->enableSave(writable && modified);
+  m_buttonBox->enableReset(writable && modified);
   m_buttonBox->enableRestoreDefaults(writable && !isGeneralConfigDefault() && ui->tabWidget->currentIndex() == 2);
 }

@@ -9,13 +9,72 @@
 #include "common/Settings.h"
 #include "gui/config/LayoutClients.h"
 #include "gui/config/ServerConfig.h"
+#include "gui/dialogs/ServerConfigDialog.h"
 #include "gui/widgets/MonitorLayoutWidget.h"
 
 #include <QApplication>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QPushButton>
+#include <QTabWidget>
+#include <QTest>
 #include <QTranslator>
+
+namespace {
+
+QList<LayoutComputer> twoComputerLayout()
+{
+  LayoutComputer work;
+  work.name = QStringLiteral("work");
+  work.monitors.append({QStringLiteral("work"), 0, 0, 1920, 1080});
+  LayoutComputer sp7;
+  sp7.name = QStringLiteral("sp7");
+  sp7.originX = 1920;
+  sp7.monitors.append({QStringLiteral("sp7"), 0, 0, 2736, 1824});
+  return {work, sp7};
+}
+
+QPushButton *saveButton(QWidget *dialog)
+{
+  const auto *box = dialog->findChild<QDialogButtonBox *>();
+  return box == nullptr ? nullptr : box->button(QDialogButtonBox::Save);
+}
+
+bool dragPlacedComputer(QWidget *dialog, MonitorLayoutWidget *layout, const QString &name, const QPoint &delta)
+{
+  auto *tabs = dialog->findChild<QTabWidget *>();
+  if (tabs == nullptr || layout == nullptr) {
+    return false;
+  }
+  tabs->setCurrentWidget(layout);
+  dialog->resize(1200, 900);
+  dialog->show();
+  QApplication::processEvents();
+  const QPoint start = layout->placedComputerCenter(name);
+  if (!layout->rect().contains(start)) {
+    return false;
+  }
+  const QPoint end = start + delta;
+  QTest::mouseEvent(QTest::MousePress, layout, Qt::LeftButton, Qt::AltModifier, start);
+  QTest::mouseEvent(QTest::MouseMove, layout, Qt::LeftButton, Qt::AltModifier, end);
+  QTest::mouseEvent(QTest::MouseRelease, layout, Qt::LeftButton, Qt::AltModifier, end);
+  QApplication::processEvents();
+  return true;
+}
+
+int originXOf(const QList<LayoutComputer> &layout, const QString &name)
+{
+  for (const auto &computer : layout) {
+    if (computer.name == name) {
+      return computer.originX;
+    }
+  }
+  return -1;
+}
+
+} // namespace
 
 void LayoutClientsTests::initTestCase()
 {
@@ -155,6 +214,86 @@ void LayoutClientsTests::hotkeyTargetsFollowTheComputerTable()
   QVERIFY(!targets.contains(QStringLiteral("sp7")));
   deskflow::setComputerDisabled(QStringLiteral("sp7"), false);
   QVERIFY(deskflow::hotkeyTargetNames().contains(QStringLiteral("sp7")));
+}
+
+void LayoutClientsTests::movingOneComputerEnablesSave()
+{
+  Settings::setValue(Settings::Core::ComputerName, QStringLiteral("work"));
+  Settings::setValue(Settings::Server::ExternalConfig, false);
+  const auto placed = twoComputerLayout();
+
+  ServerConfig internal;
+  internal.setUseMonitorLayout(true);
+  internal.setMonitorLayout(placed);
+  internal.addClient(QStringLiteral("sp7"));
+  const auto internalBefore = internal.monitorLayout();
+  {
+    ServerConfigDialog dialog(nullptr, internal);
+    auto *layout = dialog.findChild<MonitorLayoutWidget *>();
+    auto *save = saveButton(&dialog);
+    QVERIFY(layout != nullptr);
+    QVERIFY(save != nullptr);
+    QVERIFY(!save->isEnabled());
+    QVERIFY(dragPlacedComputer(&dialog, layout, QStringLiteral("sp7"), QPoint(160, 120)));
+    QVERIFY(save->isEnabled());
+    QVERIFY(originXOf(layout->layout(), QStringLiteral("sp7")) != 1920);
+    QCOMPARE(internal.monitorLayout(), internalBefore);
+    const auto movedX = originXOf(layout->layout(), QStringLiteral("sp7"));
+    QTest::mouseClick(save, Qt::LeftButton);
+    QCOMPARE(originXOf(internal.monitorLayout(), QStringLiteral("sp7")), movedX);
+  }
+
+  const auto path = QStringLiteral("%1/move-server.conf").arg(m_settingsPath);
+  const auto original = QStringLiteral(
+      "section: links\nend\n\nsection: layout\n"
+      "\twork:\n\t\torigin = 0, 0\n\t\tmonitor = work, 0, 0, 1920, 1080\n"
+      "\tsp7:\n\t\torigin = 1920, 0\n\t\tmonitor = sp7, 0, 0, 2736, 1824\n"
+      "end\n"
+  );
+  QFile file(path);
+  QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+  QCOMPARE(file.write(original.toUtf8()), static_cast<qint64>(original.toUtf8().size()));
+  file.close();
+
+  Settings::setValue(Settings::Server::ExternalConfig, true);
+  Settings::setValue(Settings::Server::ExternalConfigFile, path);
+  ServerConfig external;
+  external.addClient(QStringLiteral("sp7"));
+  const auto externalInternalLayout = external.monitorLayout();
+  {
+    ServerConfigDialog dialog(nullptr, external);
+    auto *layout = dialog.findChild<MonitorLayoutWidget *>();
+    auto *save = saveButton(&dialog);
+    QVERIFY(layout != nullptr);
+    QVERIFY(save != nullptr);
+    QVERIFY(!save->isEnabled());
+    QVERIFY(dragPlacedComputer(&dialog, layout, QStringLiteral("sp7"), QPoint(160, 120)));
+    QVERIFY(save->isEnabled());
+    QVERIFY(layout->hasPendingLayoutWrite());
+    QVERIFY(originXOf(layout->layout(), QStringLiteral("sp7")) != 1920);
+    QCOMPARE(external.monitorLayout(), externalInternalLayout);
+
+    QFile untouched(path);
+    QVERIFY(untouched.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(untouched.readAll()), original);
+    untouched.close();
+
+    QTest::mouseClick(save, Qt::LeftButton);
+    QVERIFY(!layout->hasPendingLayoutWrite());
+  }
+
+  QFile written(path);
+  QVERIFY(written.open(QIODevice::ReadOnly));
+  const auto text = QString::fromUtf8(written.readAll());
+  written.close();
+  QCOMPARE(text.count(QStringLiteral("section: layout")), 1);
+  QVERIFY(text.contains(QStringLiteral("section: links")));
+  QVERIFY(!text.contains(QStringLiteral("origin = 1920, 0")));
+  QVERIFY(text.contains(QStringLiteral("sp7:")));
+  ServerConfig stillInternal;
+  QCOMPARE(stillInternal.monitorLayout(), externalInternalLayout);
+
+  Settings::setValue(Settings::Server::ExternalConfig, false);
 }
 
 void LayoutClientsTests::renderPreview()

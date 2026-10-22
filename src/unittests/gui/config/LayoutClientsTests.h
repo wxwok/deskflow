@@ -18,6 +18,7 @@ private Q_SLOTS:
   void internalAddAndDisableRoundTrip();
   void externalAddKeepsOneLayout();
   void hotkeyTargetsFollowTheComputerTable();
+  void movingOneComputerEnablesSave();
   void renderPreview();
 
 private:

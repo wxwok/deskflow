@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPoint>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -189,6 +190,8 @@ void MonitorLayoutWidget::reloadFromConfig()
   syncOriginFields();
   refreshDiscovery();
   refreshParticipation();
+  m_committedLayout = m_layout;
+  m_pendingLayoutWrite = false;
   m_reloading = false;
   update();
 }
@@ -313,14 +316,45 @@ void MonitorLayoutWidget::store()
     return;
   }
   if (isExternal()) {
-    const auto written = deskflow::writeLayoutFile(m_config.configFile(), m_layout);
-    if (!written.ok) {
-      m_status->setText(participationError(written.error));
-    }
+    // The file stays untouched until Save. Cancel therefore drops the move.
+    m_pendingLayoutWrite = m_layout != m_committedLayout;
+    Q_EMIT layoutChanged();
     return;
   }
   m_config.setMonitorLayout(m_layout);
   Q_EMIT layoutChanged();
+}
+
+bool MonitorLayoutWidget::commitPendingLayout()
+{
+  if (!isExternal() || !m_pendingLayoutWrite) {
+    return true;
+  }
+  const auto written = deskflow::writeLayoutFile(m_config.configFile(), m_layout);
+  if (!written.ok) {
+    m_status->setText(participationError(written.error));
+    return false;
+  }
+  m_committedLayout = m_layout;
+  m_pendingLayoutWrite = false;
+  m_status->clear();
+  return true;
+}
+
+QPoint MonitorLayoutWidget::placedComputerCenter(const QString &name) const
+{
+  const auto transform = viewTransform();
+  for (const auto &computer : m_layout) {
+    if (computer.name != name || computer.monitors.isEmpty()) {
+      continue;
+    }
+    const auto global = monitorGlobal(computer, computer.monitors.first());
+    return QPoint(
+        static_cast<int>(std::lround(transform.originX + (global.x() + global.width() / 2.0) * transform.scale)),
+        static_cast<int>(std::lround(transform.originY + (global.y() + global.height() / 2.0) * transform.scale))
+    );
+  }
+  return {};
 }
 
 void MonitorLayoutWidget::refreshDiscovery()
@@ -403,7 +437,12 @@ void MonitorLayoutWidget::addDiscovered(const QString &name)
     m_reported.insert(result.layout.isEmpty() ? name : result.layout.last().name);
   }
   m_status->clear();
-  if (!isExternal()) {
+  if (isExternal()) {
+    // Add already wrote this layout, including any move that was still pending.
+    m_committedLayout = m_layout;
+    m_pendingLayoutWrite = false;
+    Q_EMIT layoutChanged();
+  } else {
     Q_EMIT authoritativeLayoutChanged();
     Q_EMIT layoutChanged();
   }

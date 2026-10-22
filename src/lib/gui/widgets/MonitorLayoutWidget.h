@@ -10,6 +10,7 @@
 #include "gui/config/LayoutClients.h"
 #include "gui/config/ServerConfig.h"
 
+#include <QPoint>
 #include <QSet>
 #include <QWidget>
 
@@ -37,6 +38,18 @@ public:
   {
     return m_layout;
   }
+
+  //! True when an external section: layout has moved and Save has not written it yet.
+  bool hasPendingLayoutWrite() const
+  {
+    return m_pendingLayoutWrite;
+  }
+
+  //! Write a pending external layout. No-op when there is nothing pending.
+  bool commitPendingLayout();
+
+  //! Widget-space center of a placed computer's first monitor. Null when it is not placed.
+  QPoint placedComputerCenter(const QString &name) const;
 
 Q_SIGNALS:
   void layoutChanged();
@@ -82,6 +95,8 @@ private:
 
   ServerConfig &m_config;
   QList<LayoutComputer> m_layout;
+  QList<LayoutComputer> m_committedLayout;
+  bool m_pendingLayoutWrite = false;
   QSet<QString> m_reported;
   QString m_serverName;
   QWidget *m_controls = nullptr;
