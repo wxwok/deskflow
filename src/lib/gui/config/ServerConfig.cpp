@@ -88,6 +88,9 @@ void ServerConfig::commit()
   }
   settings().endGroup();
 
+  const auto hadConnectedClients = settings().contains(QStringLiteral("connectedClients"));
+  const auto connectedClients = settings().value(QStringLiteral("connectedClients")).toStringList();
+
   settings().remove("");
 
   settings().beginWriteArray("screens");
@@ -136,6 +139,10 @@ void ServerConfig::commit()
     settings().setValue(it.key(), it.value());
   }
   settings().endGroup();
+
+  if (hadConnectedClients) {
+    settings().setValue(QStringLiteral("connectedClients"), connectedClients);
+  }
 
   settings().endGroup();
 }
@@ -227,12 +234,16 @@ QTextStream &operator<<(QTextStream &outStream, const ServerConfig &config)
 {
   outStream << "section: links" << Qt::endl;
 
+  const auto disabled = [](const QString &name) {
+    return Settings::value(Settings::Computer::Disabled.arg(name)).toBool();
+  };
+
   for (int i = 0; const auto &computer : config.computers()) {
-    if (!computer.isNull()) {
+    if (!computer.isNull() && !disabled(computer.name())) {
       outStream << "\t" << computer.name() << ":\n";
       for (const auto &neighbour : std::as_const(neighbourDirs)) {
         int idx = config.adjacentComputerIndex(i, neighbour.x, neighbour.y);
-        if (idx != -1 && !config.computers()[idx].isNull())
+        if (idx != -1 && !config.computers()[idx].isNull() && !disabled(config.computers()[idx].name()))
           outStream << "\t\t" << neighbour.name << " = " << config.computers()[idx].name() << Qt::endl;
       }
     }

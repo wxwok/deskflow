@@ -748,27 +748,95 @@ Additionally, check you are able to %1 the server config file: %2</source>
     <name>MonitorLayoutWidget</name>
     <message>
         <source>Use monitor layout for pointer switching</source>
-        <translation type="unfinished"></translation>
+        <translation>使用显示器布局切换指针</translation>
     </message>
     <message>
         <source>Reload reported geometry</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>An external server config is in use. Pointer switching follows section: layout in that file. This view edits the internal config, which is used when external config is turned off.</source>
-        <translation type="unfinished"></translation>
+        <translation>重新载入上报的几何</translation>
     </message>
     <message>
         <source>No computer selected</source>
-        <translation type="unfinished"></translation>
+        <translation>未选择计算机</translation>
     </message>
     <message>
         <source>Exact layout origin of the selected computer, in pixels.</source>
-        <translation type="unfinished"></translation>
+        <translation>所选计算机在布局中的精确原点，单位为像素。</translation>
     </message>
     <message>
         <source>Drag a computer so its monitors touch another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Leave this off to keep the grid links.</source>
-        <translation type="unfinished"></translation>
+        <translation>拖动一台计算机，使其显示器与另一台计算机相接。相距约 12 像素的边缘会吸附并对齐；按住 Alt 或 Shift 可关闭吸附。方向键每次移动 1 像素，按住 Shift 为 10 像素；按住 Alt 则移动时不吸附。服务器保持不动。橙色线条是会切换指针的边缘。关闭此选项则继续使用网格链接。</translation>
+    </message>
+    <message>
+        <source>Clients not in the layout</source>
+        <translation>尚未加入布局的客户端</translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation>禁用</translation>
+    </message>
+    <message>
+        <source>An external server config is in use. Pointer switching follows section: layout in that file. Add writes that section after saving a .bak backup, and registers the computer in the general computer table. This view does not change the internal layout.</source>
+        <translation>正在使用外部服务器配置。指针切换遵循该文件中的 section: layout。添加会先保存 .bak 备份，再写入该节，并在通用计算机表中注册这台计算机。此视图不会修改内部布局。</translation>
+    </message>
+    <message>
+        <source>Pointer switching follows section: layout in the external server config, not this checkbox.</source>
+        <translation>指针切换遵循外部服务器配置中的 section: layout，而不是此复选框。</translation>
+    </message>
+    <message>
+        <source>The computer name is not valid.</source>
+        <translation>计算机名称无效。</translation>
+    </message>
+    <message>
+        <source>That computer is already in the layout.</source>
+        <translation>该计算机已在布局中。</translation>
+    </message>
+    <message>
+        <source>Could not read the server config file.</source>
+        <translation>无法读取服务器配置文件。</translation>
+    </message>
+    <message>
+        <source>Could not back up the server config file.</source>
+        <translation>无法备份服务器配置文件。</translation>
+    </message>
+    <message>
+        <source>Could not write the server config file.</source>
+        <translation>无法写入服务器配置文件。</translation>
+    </message>
+    <message>
+        <source>No clients are waiting to be added.</source>
+        <translation>没有等待加入的客户端。</translation>
+    </message>
+    <message>
+        <source>Connected, reported geometry</source>
+        <translation>已连接，已上报几何</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>已连接</translation>
+    </message>
+    <message>
+        <source>Reported geometry</source>
+        <translation>已上报几何</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Disable the selected computer. Its position is kept, and the pointer will not switch to it.</source>
+        <translation>禁用所选计算机。其位置会保留，指针不会切换到它。</translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation>启用</translation>
+    </message>
+    <message>
+        <source>Enable the selected computer and restore pointer switching.</source>
+        <translation>启用所选计算机并恢复指针切换。</translation>
+    </message>
+    <message>
+        <source>Disabled</source>
+        <translation>已禁用</translation>
     </message>
 </context>
 <context>
@@ -1127,7 +1195,7 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
     <message>
         <source>Monitor layout</source>
-        <translation type="unfinished"></translation>
+        <translation>显示器布局</translation>
     </message>
 </context>
 <context>

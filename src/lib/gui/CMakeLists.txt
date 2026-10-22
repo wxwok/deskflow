@@ -38,6 +38,8 @@ add_library(${target} STATIC
   config/Computer.h
   config/ComputerList.cpp
   config/ComputerList.h
+  config/LayoutClients.cpp
+  config/LayoutClients.h
   config/ServerConfig.cpp
   config/ServerConfig.h
   core/CoreProcess.cpp

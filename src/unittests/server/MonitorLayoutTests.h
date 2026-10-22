@@ -13,10 +13,18 @@ class MonitorLayoutTests : public QObject
   Q_OBJECT
 
 private Q_SLOTS:
+  void initTestCase();
   void edgeAdjacency();
   void travelMapping();
   void configRoundTrip();
   void snapAdjacencyAndAlignment();
   void snapRejectsOverlap();
   void switchEdgeSegments();
+  void disabledComputerIsNotASwitchTarget();
+  void unknownOrDisabledSwitchIsSkipped();
+
+private:
+  inline static const QString m_settingsPath = QStringLiteral("tmp/monitor-layout");
+  inline static const QString m_settingsFile = QStringLiteral("%1/Deskflow.conf").arg(m_settingsPath);
+  inline static const QString m_stateFile = QStringLiteral("%1/Deskflow.state").arg(m_settingsPath);
 };

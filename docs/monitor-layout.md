@@ -8,11 +8,14 @@ Deskflow normally treats each computer as one rectangle, the bounding box of its
 
 - No `section: layout` means the neighbour links behave exactly as before.
 - A layout section replaces pointer switching. The links remain in the file and in the grid UI, and are ignored for the pointer while the layout is present.
-- Hot keys (`switchToScreen`, `switchInDirection`) are unchanged.
+- Hot keys (`switchInDirection`) are unchanged. A `switchToScreen` hotkey that names an unknown computer, or a computer marked `disabled` in the general computer table, is skipped and logged. It does not stop the core. The hotkey target list in the GUI is that same computer table.
 - A peer that speaks protocol 1.8 or older is one rectangle, the `DINF` shape, placed at that computer's origin.
 - The server configuration dialog writes the section only when "Use monitor layout" is checked. The checkbox is off by default.
-- An external config file is used as written. Put `section: layout` in that file. The arrangement view edits the internal config.
-- Computers named by the layout are added if they are not already known, so a layout-only file can be read. Link lines are still parsed first and still need the computer to be registered in the general settings (the GUI does this when it saves).
+- An external config file is the only layout source while it is selected. The arrangement view reads that file's `section: layout` and does not also update the internal monitor layout. Add writes the section immediately, after saving a `.bak`. Dragging a computer, nudging it, or editing its origin only marks the dialog unsaved; Save writes the section (again keeping a `.bak`) and Cancel leaves the file as it was.
+- With the internal config, the arrangement view writes `internalConfig/monitorLayout`. Adding a client registers `[computer_<name>]` in the general table and writes that one layout source.
+- A computer with `computer_<name>/disabled=true` stays in the table and in the layout, so enabling it again restores the same position. Links to it are not connected, its monitor edges and pointer barriers are ignored, and hotkeys that target it are skipped.
+- Clients that are connected or have reported geometry, and are not yet in the active layout, are listed on the Monitor layout tab. Add is what places them. The Computers tab stays disabled while an external file is in use.
+- Computers named by the layout are added if they are not already known, so a layout-only file can be read. Link lines that name a disabled computer are skipped. Link lines that name a computer that is neither known nor disabled still fail the config, which is why Add registers the computer before the core is restarted.
 
 ## Protocol 1.9
 
