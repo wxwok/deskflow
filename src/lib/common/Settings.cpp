@@ -369,6 +369,9 @@ QVariant Settings::defaultValue(const QString &key)
   if (key == Server::Heartbeat)
     return 5000;
 
+  if (key == Server::ActiveClientTimeout)
+    return 5000;
+
   if (key == Server::SwitchDelay || key == Server::SwitchDoubleTap)
     return 250;
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "deskflow/IComputer.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/PlatformComputer.h"
 #ifdef HAVE_LIBPORTAL_SHORTCUTS
 #include "platform/PortalGlobalShortcuts.h"
@@ -135,6 +136,11 @@ private:
   void stopEmulating() const;
   void cancelIdleEmulationTimer() const;
   void updatePortalGlobalShortcuts();
+  void armCaptureReleaseWatch();
+  void cancelCaptureReleaseWatch();
+  void onCaptureReleaseWatch();
+  void recreateInputCapture();
+  void resetLocalInputState();
 
   static void handleEiLogEvent(ei *ei, const ei_log_priority priority, const char *message, ei_log_context *)
   {
@@ -174,6 +180,10 @@ private:
   // this computer even while the deskflow cursor logically sits on it.
   mutable bool m_isEmulating = false;
   mutable EventQueueTimer *m_idleEmulationTimer = nullptr;
+  // Fires after a return home if the portal grab is still held.
+  EventQueueTimer *m_captureReleaseWatch = nullptr;
+  static constexpr double s_captureReleaseWatchTimeout = 1.0;
+  std::vector<deskflow::EdgeSpan> m_switchEdges;
   // Chosen empirically on one machine in 2026-06; not derived from any protocol constant.
   static constexpr double s_idleEmulationTimeout = 4.0;
 

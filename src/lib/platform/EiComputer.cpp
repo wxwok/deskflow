@@ -91,6 +91,7 @@ EiComputer::EiComputer(bool isPrimary, IEventQueue *events, bool usePortal)
 
 EiComputer::~EiComputer()
 {
+  cancelCaptureReleaseWatch();
   m_events->adoptBuffer(nullptr);
   m_events->removeHandler(EventTypes::System, m_events->getSystemTarget());
 
@@ -213,6 +214,7 @@ std::vector<deskflow::MonitorRect> EiComputer::getMonitors() const
 
 void EiComputer::setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges)
 {
+  m_switchEdges = edges;
   if (m_portalInputCapture != nullptr) {
     m_portalInputCapture->setSwitchEdges(edges);
   }
@@ -478,11 +480,69 @@ void EiComputer::enter()
     // while the cursor sits here with no relayed activity.
     fakeMouseMove(m_cursorX, m_cursorY);
   } else if (m_isPrimary) {
-    LOG_DEBUG("releasing input capture at x=%i y=%i", m_cursorX, m_cursorY);
-    m_portalInputCapture->release(m_cursorX, m_cursorY);
-    // no more button events once capture is released, so drop any held state
-    updateButtons();
+    if (m_portalInputCapture != nullptr) {
+      LOG_DEBUG("releasing input capture at x=%i y=%i", m_cursorX, m_cursorY);
+      m_portalInputCapture->release(m_cursorX, m_cursorY);
+    }
+    // Buttons and modifiers observed while the grab was active are not the
+    // local keyboard's state. Drop them so a dead client cannot leave a click
+    // or Shift logically held.
+    resetLocalInputState();
+    if (m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
+      armCaptureReleaseWatch();
+    }
   }
+}
+
+void EiComputer::resetLocalInputState()
+{
+  updateButtons();
+  if (m_keyState != nullptr) {
+    m_keyState->updateKeyState();
+  }
+}
+
+void EiComputer::armCaptureReleaseWatch()
+{
+  cancelCaptureReleaseWatch();
+  if (m_events == nullptr || m_portalInputCapture == nullptr) {
+    return;
+  }
+  m_captureReleaseWatch = m_events->newOneShotTimer(s_captureReleaseWatchTimeout, nullptr);
+  m_events->addHandler(EventTypes::Timer, m_captureReleaseWatch, [this](const auto &) { onCaptureReleaseWatch(); });
+}
+
+void EiComputer::cancelCaptureReleaseWatch()
+{
+  if (m_captureReleaseWatch == nullptr) {
+    return;
+  }
+  m_events->removeHandler(EventTypes::Timer, m_captureReleaseWatch);
+  m_events->deleteTimer(m_captureReleaseWatch);
+  m_captureReleaseWatch = nullptr;
+}
+
+void EiComputer::onCaptureReleaseWatch()
+{
+  cancelCaptureReleaseWatch();
+  if (!m_isPrimary || !m_isOnComputer || m_portalInputCapture == nullptr || !m_portalInputCapture->isActive()) {
+    return;
+  }
+  LOG_INFO("input capture was not released after returning to this computer; recreating the session");
+  recreateInputCapture();
+}
+
+void EiComputer::recreateInputCapture()
+{
+  if (!m_isPrimary || m_portalInputCapture == nullptr) {
+    return;
+  }
+  LOG_INFO("recreating input capture session so local clicks work again");
+  const auto edges = m_switchEdges;
+  delete m_portalInputCapture;
+  m_portalInputCapture = new PortalInputCapture(this, m_events);
+  m_portalInputCapture->setSwitchEdges(edges);
+  resetLocalInputState();
 }
 
 bool EiComputer::canLeave()
@@ -495,6 +555,10 @@ void EiComputer::leave()
   if (!m_isPrimary) {
     stopEmulating();
   }
+
+  // The pointer is leaving again. A pending "did the grab actually drop?"
+  // check would otherwise recreate the session under the new computer.
+  cancelCaptureReleaseWatch();
 
   m_bufferDX = 0;
   m_bufferDY = 0;
@@ -826,6 +890,17 @@ void EiComputer::onButtonEvent(ei_event *event)
 
   LOG_VERBOSE("event: button %s button=%d mask=0x%x", pressed ? "press" : "release", buttonID, mask);
 
+  // While the portal grab is still held, button events are delivered here
+  // instead of to the focused application. PrimaryClient ignores them, so a
+  // click would vanish. Release the grab and do not treat the event as input.
+  if (m_isOnComputer && m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
+    if (m_portalInputCapture->release()) {
+      LOG_INFO("button event while input capture is still held; releasing capture so local clicks work");
+    }
+    resetLocalInputState();
+    return;
+  }
+
   if (buttonID == kButtonNone) {
     LOG_DEBUG("event: button not recognized");
     return;
@@ -934,7 +1009,11 @@ void EiComputer::onMotionEvent(ei_event *event)
     // cursor position directly. A non-finite delta must not swallow that event.
     LOG_DEBUG("event: motion on primary x=%i y=%i", m_cursorX, m_cursorY);
     sendEvent(EventTypes::PrimaryComputerMotionOnPrimary, MotionInfo::alloc(m_cursorX, m_cursorY));
-    if (m_portalInputCapture->isActive()) {
+    // isActive stays true until the portal reports deactivation. A relative
+    // event after we asked to return means the grab is still feeding EIS, so
+    // retry the plain Release. requestRelease ignores the retry once one is
+    // already in flight.
+    if (m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
       m_portalInputCapture->release();
     }
     return;
@@ -1031,11 +1110,8 @@ void EiComputer::handleSystemEvent(const Event &)
       if (m_isPrimary) {
         LOG_DEBUG("re-allocating portal input capture connection and releasing active captures");
         if (m_portalInputCapture) {
-          if (m_portalInputCapture->isActive()) {
-            m_portalInputCapture->release();
-          }
-          delete m_portalInputCapture;
-          m_portalInputCapture = new PortalInputCapture(this, this->m_events);
+          m_portalInputCapture->releaseSynchronously();
+          recreateInputCapture();
         }
       }
       this->handlePortalSessionClosed();

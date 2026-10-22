@@ -1,6 +1,14 @@
 # SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
 # SPDX-License-Identifier: MIT
 
+# Header-only capture-recovery decisions. No libei or portal linkage.
+create_test(
+  NAME InputCaptureRecoveryTests
+  DEPENDS base
+  SOURCE InputCaptureRecoveryTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/platform"
+)
+
 if (WIN32)
   create_test(
     NAME MSWindowsClipboardTests

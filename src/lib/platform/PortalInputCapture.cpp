@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 #include <poll.h>
 #include <sys/socket.h> // for EIS fd hack, remove
 #include <sys/un.h>     // for EIS fd hack, remove
@@ -240,13 +241,31 @@ PortalInputCapture::~PortalInputCapture()
 {
   m_portalAlive.store(false);
   guint idle = 0;
+  guint releaseIdle = 0;
+  guint barrierRetry = 0;
+  guint reenableTimeout = 0;
+  std::shared_ptr<CaptureRelease> releaseJob = takeReleaseJob(releaseIdle);
   {
     std::lock_guard lock(m_edgeMutex);
     idle = m_rebuildIdle;
     m_rebuildIdle = 0;
+    barrierRetry = m_barrierRetry;
+    m_barrierRetry = 0;
+    reenableTimeout = m_reenableTimeout;
+    m_reenableTimeout = 0;
   }
   if (idle != 0) {
     g_source_remove(idle);
+  }
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+  if (barrierRetry != 0) {
+    g_source_remove(barrierRetry);
+  }
+  if (reenableTimeout != 0) {
+    g_source_remove(reenableTimeout);
   }
 
   if (g_main_loop_is_running(m_glibMainLoop))
@@ -338,7 +357,7 @@ void PortalInputCapture::readClipboardSelection(XdpSession *session) const
 void PortalInputCapture::handleSelectionTransfer(XdpSession *session, const char *mimeType, uint32_t serial) const
 {
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
-  if (m_isActive) {
+  if (m_recovery.captured()) {
     LOG_DEBUG("skipping clipboard selection transfer, clipboard is active");
     return;
   }
@@ -444,6 +463,7 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
 {
   g_autoptr(GError) error = nullptr;
 
+  const auto requested = static_cast<int>(m_barriers.size());
   auto failed_list = xdp_input_capture_session_set_pointer_barriers_finish(m_session, res, &error);
   if (failed_list) {
     auto it = failed_list;
@@ -472,6 +492,14 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
   g_list_free_full(failed_list, g_object_unref);
 
   enable();
+
+  // A grab that is still active makes mutter reject the whole set ("failed to
+  // apply barrier"). Retry once we are idle; a second total failure is geometry
+  // and retrying it would loop.
+  if (requested > 0 && m_barriers.empty() && m_recovery.noteAllBarriersRejected()) {
+    LOG_INFO("all pointer barriers were rejected; retrying once input capture is idle");
+    scheduleBarrierRetry();
+  }
 }
 
 std::pair<int, int>
@@ -783,21 +811,163 @@ void PortalInputCapture::disable()
   }
 }
 
-void PortalInputCapture::release()
+bool PortalInputCapture::release()
 {
-  LOG_DEBUG("releasing input capture session, id=%d", m_activationId);
-  xdp_input_capture_session_release(m_session, m_activationId);
-  m_isActive = false;
+  const auto request = m_recovery.requestRelease(false);
+  if (!request.plain && !request.atPosition) {
+    return false;
+  }
+  queueRelease(request.plain, request.atPosition, 0, 0);
+  return true;
 }
 
-void PortalInputCapture::release(double x, double y)
+bool PortalInputCapture::release(double x, double y)
 {
-  const auto [mappedX, mappedY] = mapPortalReleasePosition(x, y);
-  LOG_DEBUG(
-      "releasing input capture session, id=%d x=%.1f y=%.1f mapped=%.1f,%.1f", m_activationId, x, y, mappedX, mappedY
+  // Reading the zone bounds is only safe while a grab is held: that is when
+  // barrier rebuilds are deferred and will not mutate them.
+  if (!m_recovery.captured()) {
+    return false;
+  }
+  bool inside = false;
+  double mappedX = x;
+  double mappedY = y;
+  if (Bounds portalBounds; getPortalBounds(portalBounds)) {
+    const auto mapped = mapPortalReleasePosition(x, y);
+    mappedX = mapped.first;
+    mappedY = mapped.second;
+    inside = releasePositionInsideZone(
+        mappedX, mappedY, portalBounds.left, portalBounds.top, portalBounds.right, portalBounds.bottom
+    );
+  }
+  const auto request = m_recovery.requestRelease(inside);
+  if (!request.plain && !request.atPosition) {
+    return false;
+  }
+  queueRelease(request.plain, request.atPosition, mappedX, mappedY);
+  return true;
+}
+
+std::shared_ptr<PortalInputCapture::CaptureRelease> PortalInputCapture::takeReleaseJob(guint &idleId)
+{
+  std::lock_guard lock(m_edgeMutex);
+  idleId = m_releaseIdle;
+  m_releaseIdle = 0;
+  auto job = std::move(m_releaseJob);
+  return job;
+}
+
+void PortalInputCapture::releaseSynchronously()
+{
+  guint releaseIdle = 0;
+  auto releaseJob = takeReleaseJob(releaseIdle);
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+  if (m_session == nullptr || !m_recovery.captured()) {
+    return;
+  }
+  const auto id = m_recovery.activationId();
+  LOG_DEBUG("releasing input capture session, id=%u", id);
+  xdp_input_capture_session_release(m_session, id);
+  m_recovery.setDeactivated(id);
+}
+
+void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, double y)
+{
+  if ((!plain && !atPosition) || !m_portalAlive.load()) {
+    return;
+  }
+
+  auto job = std::make_shared<CaptureRelease>();
+  job->plain = plain;
+  job->atPosition = atPosition;
+  job->x = x;
+  job->y = y;
+  job->activationId = m_recovery.activationId();
+
+  guint previous = 0;
+  auto discarded = takeReleaseJob(previous);
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_releaseJob = job;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  discarded.reset();
+
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        guint ignored = 0;
+        auto job = self->takeReleaseJob(ignored);
+        if (!job || !self->m_portalAlive.load() || self->m_session == nullptr) {
+          return G_SOURCE_REMOVE;
+        }
+        // Plain Release is the call that actually drops the grab. ReleaseAt is
+        // only a cursor warp, and mutter keeps the grab if the point is outside
+        // a zone, so it is never the only call.
+        if (job->atPosition) {
+          LOG_DEBUG("releasing input capture session, id=%u x=%.1f y=%.1f", job->activationId, job->x, job->y);
+          xdp_input_capture_session_release_at(self->m_session, job->activationId, job->x, job->y);
+        }
+        if (job->plain) {
+          LOG_DEBUG("releasing input capture session, id=%u", job->activationId);
+          xdp_input_capture_session_release(self->m_session, job->activationId);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
   );
-  xdp_input_capture_session_release_at(m_session, m_activationId, mappedX, mappedY);
-  m_isActive = false;
+
+  if (idle == 0) {
+    std::lock_guard lock(m_edgeMutex);
+    if (m_releaseJob == job) {
+      m_releaseJob.reset();
+    }
+    return;
+  }
+
+  std::lock_guard lock(m_edgeMutex);
+  // The callback may already have cleared the id. Only publish it if this job
+  // is still the one waiting to run.
+  if (m_releaseJob == job) {
+    m_releaseIdle = idle;
+  }
+}
+
+void PortalInputCapture::scheduleBarrierRetry()
+{
+  guint previous = 0;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_barrierRetry;
+    m_barrierRetry = 0;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+
+  const auto id = g_timeout_add(
+      200,
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_barrierRetry = 0;
+        }
+        if (self->m_portalAlive.load() && self->m_session != nullptr &&
+            self->m_recovery.phase() == InputCaptureRecovery::CapturePhase::Idle) {
+          self->handleZonesChanged(self->m_session, nullptr, false);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  std::lock_guard lock(m_edgeMutex);
+  m_barrierRetry = id;
 }
 
 void PortalInputCapture::handleDisabled(const XdpInputCaptureSession *, const GVariant *)
@@ -808,21 +978,46 @@ void PortalInputCapture::handleDisabled(const XdpInputCaptureSession *, const GV
     return; // Nothing to do
 
   m_enabled = false;
-  m_isActive = false;
+  m_recovery.setDisabled();
 
   // FIXME: need some better heuristics here of when we want to enable again
   // But we don't know *why* we got disabled (and it's doubtfull we ever
   // will), so we just assume that the zones will change or something and we
   // can re-enable again
   // ... very soon
-  g_timeout_add(
+  guint previous = 0;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_reenableTimeout;
+    m_reenableTimeout = 0;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  const auto reenable = g_timeout_add(
       1000,
       [](gpointer data) -> gboolean {
-        static_cast<PortalInputCapture *>(data)->enable();
-        return false;
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_reenableTimeout = 0;
+        }
+        if (!self->m_portalAlive.load()) {
+          return G_SOURCE_REMOVE;
+        }
+        self->enable();
+        if (self->m_session != nullptr && self->m_recovery.takeDeferredBarriers()) {
+          LOG_INFO("reapplying pointer barriers after input capture was re-enabled");
+          self->handleZonesChanged(self->m_session, nullptr, true);
+        }
+        return G_SOURCE_REMOVE;
       },
       this
   );
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_reenableTimeout = reenable;
+  }
 }
 
 void PortalInputCapture::handleActivated(
@@ -863,7 +1058,7 @@ void PortalInputCapture::handleActivated(
     LOG_WARN("activation has no options");
   }
   m_activationId = activationId;
-  m_isActive = true;
+  m_recovery.setActivated(activationId);
 
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
   if (m_session) {
@@ -894,11 +1089,20 @@ void PortalInputCapture::handleDeactivated(
 )
 {
   LOG_DEBUG("cb deactivated, id=%i", activationId);
-  m_isActive = false;
+  m_recovery.setDeactivated(activationId);
+  if (m_session != nullptr && m_recovery.takeDeferredBarriers()) {
+    LOG_INFO("reapplying pointer barriers after input capture released");
+    handleZonesChanged(m_session, nullptr, true);
+  }
 }
 
-void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, const GVariant *)
+void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, const GVariant *, bool fresh)
 {
+  if (m_recovery.requestBarrierUpdate(fresh) == InputCaptureRecovery::BarrierApply::Defer) {
+    LOG_INFO("deferring pointer barrier update until input capture is released");
+    return;
+  }
+
   for (auto b : m_barriers)
     g_object_unref(b);
   m_barriers.clear();
