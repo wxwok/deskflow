@@ -275,31 +275,67 @@ PortalInputCapture::~PortalInputCapture()
     g_source_remove(reenableTimeout);
   }
 
-  if (g_main_loop_is_running(m_glibMainLoop))
-    g_main_loop_quit(m_glibMainLoop);
+  // Ask the glib thread to Release and Close before it exits. A layout save
+  // restarts the core only after this process has exited; the compositor has
+  // to drop the old capture first. Closing from here also runs when recovery
+  // deletes this session to build a new one.
+  const bool glibRunning = m_glibMainLoop != nullptr && g_main_loop_is_running(m_glibMainLoop);
+  if (glibRunning) {
+    g_idle_add(
+        [](gpointer data) -> gboolean {
+          auto *self = static_cast<PortalInputCapture *>(data);
+          self->releaseAndCloseSession();
+          if (self->m_glibMainLoop != nullptr && g_main_loop_is_running(self->m_glibMainLoop)) {
+            g_main_loop_quit(self->m_glibMainLoop);
+          }
+          return G_SOURCE_REMOVE;
+        },
+        this
+    );
+  } else {
+    releaseAndCloseSession();
+  }
 
   if (m_glibThread) {
-    m_glibThread->cancel();
-    m_glibThread->wait();
+    // Do not cancel before the close idle runs. pthread_cancel inside poll
+    // skips that idle and the compositor keeps the capture.
+    if (glibRunning && !m_glibThread->wait(2.0)) {
+      m_glibThread->cancel();
+      m_glibThread->wait();
+    } else if (!glibRunning) {
+      m_glibThread->wait();
+    }
     m_glibThread = nullptr;
 
-    g_main_loop_unref(m_glibMainLoop);
-    m_glibMainLoop = nullptr;
+    if (m_glibMainLoop != nullptr) {
+      g_main_loop_unref(m_glibMainLoop);
+      m_glibMainLoop = nullptr;
+    }
+  }
+
+  if (!m_sessionClosed) {
+    releaseAndCloseSession();
   }
 
   if (m_session) {
     using enum Signal;
     XdpSession *parentSession = xdp_input_capture_session_get_session(m_session);
-    if (m_signals.at(SessionClosed) != 0)
-      g_signal_handler_disconnect(parentSession, m_signals.at(SessionClosed));
-    g_signal_handler_disconnect(m_session, m_signals.at(Disabled));
-    g_signal_handler_disconnect(m_session, m_signals.at(Activated));
-    g_signal_handler_disconnect(m_session, m_signals.at(Deactivated));
-    g_signal_handler_disconnect(m_session, m_signals.at(ZonesChanged));
+    auto disconnectIfSet = [](gpointer instance, gulong &handler) {
+      if (handler != 0 && instance != nullptr) {
+        g_signal_handler_disconnect(instance, handler);
+      }
+      handler = 0;
+    };
+    disconnectIfSet(parentSession, m_signals.at(SessionClosed));
+    disconnectIfSet(m_session, m_signals.at(Disabled));
+    disconnectIfSet(m_session, m_signals.at(Activated));
+    disconnectIfSet(m_session, m_signals.at(Deactivated));
+    disconnectIfSet(m_session, m_signals.at(ZonesChanged));
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
-    g_signal_handler_disconnect(parentSession, m_signals.at(SelectionTransfer));
+    disconnectIfSet(parentSession, m_signals.at(SelectionTransfer));
 #endif
     g_object_unref(m_session);
+    m_session = nullptr;
   }
 
   for (auto b : m_barriers) {
@@ -325,10 +361,58 @@ gboolean PortalInputCapture::timeoutHandler() const
   return true; // keep re-triggering
 }
 
+void PortalInputCapture::releaseAndCloseSession()
+{
+  if (m_sessionClosed || m_session == nullptr) {
+    m_sessionClosed = true;
+    return;
+  }
+  m_sessionClosed = true;
+
+  using enum Signal;
+  XdpSession *parentSession = xdp_input_capture_session_get_session(m_session);
+  auto disconnectIfSet = [](gpointer instance, gulong &handler) {
+    if (handler != 0 && instance != nullptr) {
+      g_signal_handler_disconnect(instance, handler);
+    }
+    handler = 0;
+  };
+  // Drop "closed" before Close(). Otherwise the handler treats our own
+  // shutdown as the portal dying and quits the whole core.
+  disconnectIfSet(parentSession, m_signals.at(SessionClosed));
+  disconnectIfSet(m_session, m_signals.at(Disabled));
+  disconnectIfSet(m_session, m_signals.at(Activated));
+  disconnectIfSet(m_session, m_signals.at(Deactivated));
+  disconnectIfSet(m_session, m_signals.at(ZonesChanged));
+#ifdef HAVE_LIBPORTAL_CLIPBOARD
+  disconnectIfSet(parentSession, m_signals.at(SelectionTransfer));
+#endif
+
+  if (m_recovery.captured() || m_recovery.emulating()) {
+    const auto id = m_recovery.activationId();
+    LOG_INFO("releasing input capture session before it is destroyed, id=%u", id);
+    xdp_input_capture_session_release(m_session, id);
+  }
+  if (parentSession != nullptr) {
+    LOG_INFO("closing input capture portal session");
+    xdp_session_close(parentSession);
+  }
+}
+
 void PortalInputCapture::handleSessionClosed(XdpSession *session)
 {
+  if (m_glibMainLoop != nullptr) {
+    g_main_loop_quit(m_glibMainLoop);
+  }
+  if (!m_portalAlive.load()) {
+    LOG_DEBUG("portal input capture session closed during shutdown");
+    if (m_signals.at(Signal::SessionClosed) != 0) {
+      g_signal_handler_disconnect(session, m_signals.at(Signal::SessionClosed));
+      m_signals.at(Signal::SessionClosed) = 0;
+    }
+    return;
+  }
   LOG_ERR("portal input capture session was closed, exiting");
-  g_main_loop_quit(m_glibMainLoop);
   m_events->addEvent(Event(EventTypes::Quit));
 
   g_signal_handler_disconnect(session, m_signals.at(Signal::SessionClosed));
@@ -936,6 +1020,9 @@ void PortalInputCapture::noteStoppedEmulating()
 
 void PortalInputCapture::onCaptureBecameIdle()
 {
+  if (!m_portalAlive.load()) {
+    return;
+  }
   if (m_recovery.takeRecreateSession()) {
     LOG_INFO("recreating input capture session so pointer barriers can be applied");
     m_computer->scheduleInputCaptureRecreate();

@@ -15,6 +15,7 @@
 #include "deskflow/App.h"
 #include "deskflow/IComputer.h"
 #include "deskflow/OptionTypes.h"
+#include "platform/EiBackendReconnect.h"
 #include "platform/EiClipboard.h"
 #include "platform/EiEventQueueBuffer.h"
 #include "platform/EiKeyState.h"
@@ -82,6 +83,9 @@ EiComputer::EiComputer(bool isPrimary, IEventQueue *events, bool usePortal)
       LOG_ERR("ei init error: %s", strerror(-rc));
       throw std::runtime_error("failed to init ei context");
     }
+    // libei set the backend before returning. A later ei_setup_backend_fd
+    // on this context would abort.
+    m_eiBackendAttached = true;
     // Create clipboard for socket backend
     m_clipboard = new EiClipboard(kClipboardClipboard);
   }
@@ -174,6 +178,7 @@ void EiComputer::cleanupEi()
   }
   m_eiDevices.clear();
   m_ei = ei_unref(m_ei);
+  m_eiBackendAttached = false;
 }
 
 void *EiComputer::getEventTarget() const
@@ -545,6 +550,14 @@ void EiComputer::onCaptureReleaseWatch()
   if (!m_portalInputCapture->isActive() && !m_portalInputCapture->isEmulating()) {
     return;
   }
+  // Devices already stopped. The portal state can still say "captured" when
+  // Deactivated has not arrived. Rebuilding the session here is what called
+  // ei_setup_backend_fd on the live context and abort()ed the core. Clicks
+  // are not on the EIS socket anymore, so leave that connection up.
+  if (!m_portalInputCapture->isEmulating()) {
+    LOG_INFO("input capture is marked held after returning, but no device is emulating; leaving the eis connection up");
+    return;
+  }
   // The return already asked for a Release. If that id is still held, one
   // more try; the try after that rebuilds the session. A bounce that changed
   // the activation id makes release() send the new one instead. A Release
@@ -597,12 +610,70 @@ void EiComputer::recreateInputCapture()
   if (!m_isPrimary || m_portalInputCapture == nullptr) {
     return;
   }
+  // ei_dispatch() is still walking events on this context. Destroying it
+  // here is a use-after-free; the caller finishes the dispatch and retries.
+  if (m_handlingEiEvents) {
+    m_recreateAfterEiDispatch = true;
+    LOG_INFO("deferring input capture recreate until libei finishes the current dispatch");
+    return;
+  }
   LOG_INFO("recreating input capture session so local clicks work again");
+  cancelCaptureReleaseWatch();
   const auto edges = m_switchEdges;
+  // Stop the old portal before touching libei. Its glib thread must not
+  // deliver another EIS fd into the context we are about to destroy, and
+  // Close has to reach the compositor before the new session is created.
   delete m_portalInputCapture;
+  m_portalInputCapture = nullptr;
+  replaceEiReceiver();
   m_portalInputCapture = new PortalInputCapture(this, m_events);
   m_portalInputCapture->setSwitchEdges(edges);
   resetLocalInputState();
+}
+
+void EiComputer::replaceEiReceiver()
+{
+  LOG_INFO("replacing libei context so a new eis connection can attach");
+  cleanupEi();
+  initEi();
+}
+
+void EiComputer::attachEisBackend(int fd)
+{
+  if (fd < 0) {
+    return;
+  }
+  if (m_handlingEiEvents) {
+    if (m_pendingEisFd >= 0) {
+      close(m_pendingEisFd);
+    }
+    m_pendingEisFd = fd;
+    LOG_INFO("deferring eis fd=%d until libei finishes the current dispatch", fd);
+    return;
+  }
+  if (m_ei == nullptr) {
+    LOG_WARN("dropping eis fd=%d; there is no libei context", fd);
+    close(fd);
+    return;
+  }
+  // Never call ei_setup_backend_fd on a context that already has a backend.
+  // libei asserts and abort()s, which is the exit code 6 after a recreate.
+  if (decideEiBackendReconnect(m_eiBackendAttached) == EiBackendReconnect::ReplaceThenAttach) {
+    LOG_WARN("eis fd=%d arrived while a libei backend is still attached; replacing the context", fd);
+    replaceEiReceiver();
+  }
+  if (m_ei == nullptr) {
+    LOG_WARN("dropping eis fd=%d; replacing the libei context failed", fd);
+    close(fd);
+    return;
+  }
+  const auto rc = ei_setup_backend_fd(m_ei, fd);
+  // The backend pointer is installed before ei_setup_backend_fd returns,
+  // including when the socket setup fails. A later call must replace.
+  m_eiBackendAttached = true;
+  if (rc != 0) {
+    LOG_WARN("failed to set up ei: %s", strerror(-rc));
+  }
 }
 
 bool EiComputer::canLeave()
@@ -963,9 +1034,11 @@ void EiComputer::onButtonEvent(ei_event *event)
       (m_portalInputCapture->isActive() || m_portalInputCapture->isEmulating())) {
     if (m_portalInputCapture->release()) {
       LOG_INFO("button event while input capture is still held; releasing capture so local clicks work");
-    } else {
+    } else if (m_portalInputCapture->isEmulating()) {
       LOG_INFO("button event while input capture is still held; recreating the session");
       recreateInputCapture();
+    } else {
+      LOG_INFO("button event while input capture is marked held, but no device is emulating");
     }
     resetLocalInputState();
     return;
@@ -1107,11 +1180,7 @@ void EiComputer::handleConnectedToEisEvent(const Event &event)
 {
   int fd = static_cast<EiConnectInfo *>(event.getData())->m_fd;
   LOG_DEBUG("eis connection established, fd=%d", fd);
-
-  auto rc = ei_setup_backend_fd(m_ei, fd);
-  if (rc != 0) {
-    LOG_WARN("failed to set up ei: %s", strerror(-rc));
-  }
+  attachEisBackend(fd);
 }
 
 void EiComputer::handlePortalSessionClosed()
@@ -1125,132 +1194,158 @@ void EiComputer::handlePortalSessionClosed()
 
 void EiComputer::handleSystemEvent(const Event &)
 {
-  std::scoped_lock lock{m_mutex};
+  bool recreate = false;
+  int pendingFd = -1;
+  {
+    std::scoped_lock lock{m_mutex};
 
-  // Only one ei_dispatch per system event, see the comment in
-  // EiEventQueueBuffer::addEvent
-  ei_dispatch(m_ei);
-  struct ei_event *event;
-
-  while ((event = ei_get_event(m_ei)) != nullptr) {
-    auto type = ei_event_get_type(event);
-    auto seat = ei_event_get_seat(event);
-    auto device = ei_event_get_device(event);
-
-    switch (type) {
-    case EI_EVENT_CONNECT:
-      LOG_DEBUG("connected to eis");
-      break;
-    case EI_EVENT_SEAT_ADDED:
-      if (!m_eiSeat) {
-        m_eiSeat = ei_seat_ref(seat);
-        ei_seat_bind_capabilities(
-            m_eiSeat, EI_DEVICE_CAP_POINTER, EI_DEVICE_CAP_POINTER_ABSOLUTE, EI_DEVICE_CAP_KEYBOARD,
-            EI_DEVICE_CAP_BUTTON, EI_DEVICE_CAP_SCROLL, nullptr
-        );
-        LOG_DEBUG("ei: using seat %s", ei_seat_get_name(m_eiSeat));
-        // we don't care about touch
-      }
-      break;
-    case EI_EVENT_DEVICE_ADDED:
-      if (seat == m_eiSeat) {
-        addDevice(device);
-      } else {
-        LOG_INFO("seat %s is ignored", ei_seat_get_name(m_eiSeat));
-      }
-      break;
-    case EI_EVENT_DEVICE_REMOVED:
-      removeDevice(device);
-      break;
-    case EI_EVENT_SEAT_REMOVED:
-      if (seat == m_eiSeat) {
-        m_eiSeat = ei_seat_unref(m_eiSeat);
-      }
-      break;
-    case EI_EVENT_DISCONNECT:
-      // We're using libei which emulates the various seat/device remove events
-      // so by the time we get here our EiComputer should be in a neutral state.
-      //
-      // We must release the xdg-portal InputCapture in case it is still active
-      // so that the cursor is usable and not stuck on the deskflow server.
-      LOG_WARN("disconnected from eis, will afterwards commence attempt to reconnect");
-      if (m_isPrimary) {
-        LOG_DEBUG("re-allocating portal input capture connection and releasing active captures");
-        if (m_portalInputCapture) {
-          m_portalInputCapture->releaseSynchronously();
-          recreateInputCapture();
-        }
-      }
-      this->handlePortalSessionClosed();
-      break;
-    case EI_EVENT_DEVICE_PAUSED:
-      LOG_DEBUG("device %s is paused", ei_device_get_name(device));
-      m_isEmulating = false;
-      // a paused device is reset to neutral by the EIS side and sends no
-      // further events, so the releases for held buttons never arrive
-      updateButtons();
-      cancelIdleEmulationTimer();
-      break;
-    case EI_EVENT_DEVICE_RESUMED:
-      LOG_DEBUG("device %s is resumed", ei_device_get_name(device));
-      if (!m_isPrimary && m_isOnComputer) {
-        ensureEmulating();
-      }
-      break;
-    case EI_EVENT_KEYBOARD_MODIFIERS:
-      LOG_VERBOSE("event: keyboard modifiers locked=0x%x", ei_event_keyboard_get_xkb_mods_locked(event));
-      m_keyState->updateLockedModifiers(ei_event_keyboard_get_xkb_mods_locked(event));
-      break;
-
-    // events below are for a receiver context (barriers)
-    case EI_EVENT_FRAME:
-      break;
-    case EI_EVENT_DEVICE_START_EMULATING:
-      LOG_DEBUG(
-          "device %s started emulating, sequence=%u", ei_device_get_name(device), ei_event_emulating_get_sequence(event)
-      );
-      if (m_isPrimary && m_portalInputCapture != nullptr) {
-        m_portalInputCapture->noteEmulating(ei_event_emulating_get_sequence(event));
-      }
-      break;
-    case EI_EVENT_DEVICE_STOP_EMULATING:
-      // stop_emulating has no sequence. libei rejects reading one here.
-      LOG_DEBUG("device %s stopped emulating", ei_device_get_name(device));
-      if (m_isPrimary && m_portalInputCapture != nullptr) {
-        m_portalInputCapture->noteStoppedEmulating();
-      }
-      break;
-    case EI_EVENT_KEYBOARD_KEY:
-      onKeyEvent(event);
-      break;
-    case EI_EVENT_BUTTON_BUTTON:
-      onButtonEvent(event);
-      break;
-    case EI_EVENT_POINTER_MOTION:
-      onMotionEvent(event);
-      break;
-    case EI_EVENT_POINTER_MOTION_ABSOLUTE:
-      onAbsMotionEvent(event);
-      break;
-    case EI_EVENT_TOUCH_UP:
-      break;
-    case EI_EVENT_TOUCH_MOTION:
-      break;
-    case EI_EVENT_TOUCH_DOWN:
-      break;
-    case EI_EVENT_SCROLL_DELTA:
-      onPointerScrollEvent(event);
-      break;
-    case EI_EVENT_SCROLL_DISCRETE:
-      onPointerScrollDiscreteEvent(event);
-      break;
-    case EI_EVENT_SCROLL_STOP:
-    case EI_EVENT_SCROLL_CANCEL:
-      break;
-    default:
-      break;
+    // Only one ei_dispatch per system event, see the comment in
+    // EiEventQueueBuffer::addEvent
+    m_handlingEiEvents = true;
+    if (m_ei != nullptr) {
+      ei_dispatch(m_ei);
     }
-    ei_event_unref(event);
+    struct ei_event *event;
+
+    while (m_ei != nullptr && (event = ei_get_event(m_ei)) != nullptr) {
+      auto type = ei_event_get_type(event);
+      auto seat = ei_event_get_seat(event);
+      auto device = ei_event_get_device(event);
+
+      switch (type) {
+      case EI_EVENT_CONNECT:
+        LOG_DEBUG("connected to eis");
+        break;
+      case EI_EVENT_SEAT_ADDED:
+        if (!m_eiSeat) {
+          m_eiSeat = ei_seat_ref(seat);
+          ei_seat_bind_capabilities(
+              m_eiSeat, EI_DEVICE_CAP_POINTER, EI_DEVICE_CAP_POINTER_ABSOLUTE, EI_DEVICE_CAP_KEYBOARD,
+              EI_DEVICE_CAP_BUTTON, EI_DEVICE_CAP_SCROLL, nullptr
+          );
+          LOG_DEBUG("ei: using seat %s", ei_seat_get_name(m_eiSeat));
+          // we don't care about touch
+        }
+        break;
+      case EI_EVENT_DEVICE_ADDED:
+        if (seat == m_eiSeat) {
+          addDevice(device);
+        } else {
+          LOG_INFO("seat %s is ignored", ei_seat_get_name(m_eiSeat));
+        }
+        break;
+      case EI_EVENT_DEVICE_REMOVED:
+        removeDevice(device);
+        break;
+      case EI_EVENT_SEAT_REMOVED:
+        if (seat == m_eiSeat) {
+          m_eiSeat = ei_seat_unref(m_eiSeat);
+        }
+        break;
+      case EI_EVENT_DISCONNECT:
+        // We're using libei which emulates the various seat/device remove events
+        // so by the time we get here our EiComputer should be in a neutral state.
+        //
+        // We must release the xdg-portal InputCapture in case it is still active
+        // so that the cursor is usable and not stuck on the deskflow server.
+        LOG_WARN("disconnected from eis, will afterwards commence attempt to reconnect");
+        if (m_isPrimary && m_portalInputCapture) {
+          LOG_DEBUG("re-allocating portal input capture connection and releasing active captures");
+          m_portalInputCapture->releaseSynchronously();
+        }
+        // cleanupEi() would free the context ei_dispatch() is still using.
+        m_recreateAfterEiDispatch = true;
+        break;
+      case EI_EVENT_DEVICE_PAUSED:
+        LOG_DEBUG("device %s is paused", ei_device_get_name(device));
+        m_isEmulating = false;
+        // a paused device is reset to neutral by the EIS side and sends no
+        // further events, so the releases for held buttons never arrive
+        updateButtons();
+        cancelIdleEmulationTimer();
+        break;
+      case EI_EVENT_DEVICE_RESUMED:
+        LOG_DEBUG("device %s is resumed", ei_device_get_name(device));
+        if (!m_isPrimary && m_isOnComputer) {
+          ensureEmulating();
+        }
+        break;
+      case EI_EVENT_KEYBOARD_MODIFIERS:
+        LOG_VERBOSE("event: keyboard modifiers locked=0x%x", ei_event_keyboard_get_xkb_mods_locked(event));
+        m_keyState->updateLockedModifiers(ei_event_keyboard_get_xkb_mods_locked(event));
+        break;
+
+      // events below are for a receiver context (barriers)
+      case EI_EVENT_FRAME:
+        break;
+      case EI_EVENT_DEVICE_START_EMULATING:
+        LOG_DEBUG(
+            "device %s started emulating, sequence=%u", ei_device_get_name(device),
+            ei_event_emulating_get_sequence(event)
+        );
+        if (m_isPrimary && m_portalInputCapture != nullptr) {
+          m_portalInputCapture->noteEmulating(ei_event_emulating_get_sequence(event));
+        }
+        break;
+      case EI_EVENT_DEVICE_STOP_EMULATING:
+        // stop_emulating has no sequence. libei rejects reading one here.
+        LOG_DEBUG("device %s stopped emulating", ei_device_get_name(device));
+        if (m_isPrimary && m_portalInputCapture != nullptr) {
+          m_portalInputCapture->noteStoppedEmulating();
+        }
+        break;
+      case EI_EVENT_KEYBOARD_KEY:
+        onKeyEvent(event);
+        break;
+      case EI_EVENT_BUTTON_BUTTON:
+        onButtonEvent(event);
+        break;
+      case EI_EVENT_POINTER_MOTION:
+        onMotionEvent(event);
+        break;
+      case EI_EVENT_POINTER_MOTION_ABSOLUTE:
+        onAbsMotionEvent(event);
+        break;
+      case EI_EVENT_TOUCH_UP:
+        break;
+      case EI_EVENT_TOUCH_MOTION:
+        break;
+      case EI_EVENT_TOUCH_DOWN:
+        break;
+      case EI_EVENT_SCROLL_DELTA:
+        onPointerScrollEvent(event);
+        break;
+      case EI_EVENT_SCROLL_DISCRETE:
+        onPointerScrollDiscreteEvent(event);
+        break;
+      case EI_EVENT_SCROLL_STOP:
+      case EI_EVENT_SCROLL_CANCEL:
+        break;
+      default:
+        break;
+      }
+      ei_event_unref(event);
+    }
+    m_handlingEiEvents = false;
+    recreate = m_recreateAfterEiDispatch;
+    m_recreateAfterEiDispatch = false;
+    pendingFd = m_pendingEisFd;
+    m_pendingEisFd = -1;
+  }
+  if (recreate) {
+    if (pendingFd >= 0) {
+      // The replacement session opens its own EIS fd.
+      close(pendingFd);
+      pendingFd = -1;
+    }
+    if (m_isPrimary && m_portalInputCapture != nullptr) {
+      recreateInputCapture();
+    } else {
+      handlePortalSessionClosed();
+    }
+  }
+  if (pendingFd >= 0) {
+    attachEisBackend(pendingFd);
   }
 }
 

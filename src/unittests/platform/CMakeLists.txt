@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
-# SPDX-License-Identifier: MIT
+#SPDX - FileCopyrightText : (C)2025 Deskflow Developers
+#SPDX - License - Identifier : MIT
 
-# Header-only capture-recovery decisions. No libei or portal linkage.
+#Header - only capture - recovery decisions.No libei or portal linkage.
 create_test(
   NAME InputCaptureRecoveryTests
   DEPENDS base
@@ -33,6 +33,7 @@ elseif(APPLE)
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/platform"
   )
 elseif(UNIX)
+  pkg_check_modules(LIBEI QUIET IMPORTED_TARGET "libei-1.0")
   if(LIBEI_FOUND)
     create_test(
       NAME EiKeyStateTests
@@ -48,6 +49,14 @@ elseif(UNIX)
       SOURCE EiRelativePointerTests.cpp
       WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/platform"
     )
+    create_test(
+      NAME EiBackendReconnectTests
+      DEPENDS base
+      LIBS PkgConfig::LIBEI
+      SOURCE EiBackendReconnectTests.cpp
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/platform"
+    )
+    target_include_directories(EiBackendReconnectTests PRIVATE ${LIBEI_INCLUDE_DIRS})
   endif()
 
   if (BUILD_X11_SUPPORT)

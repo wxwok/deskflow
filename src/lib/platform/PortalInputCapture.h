@@ -87,6 +87,8 @@ private:
   void scheduleBarrierRetry();
   void scheduleDeferredBarrierApply();
   void onCaptureBecameIdle();
+  /// Release a live grab and Close the portal session. Safe to call once.
+  void releaseAndCloseSession();
 
   struct CaptureRelease
   {
@@ -208,6 +210,7 @@ private:
 
   XdpPortal *m_portal = nullptr;
   XdpInputCaptureSession *m_session = nullptr;
+  bool m_sessionClosed = false;
 
   std::map<Signal, gulong> m_signals = {
       {Signal::SessionClosed, 0},     {Signal::Disabled, 0},     {Signal::Activated, 0},
