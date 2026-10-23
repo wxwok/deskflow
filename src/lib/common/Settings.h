@@ -114,6 +114,10 @@ public:
     inline static const auto GridHeight = QStringLiteral("server/gridHeight");
     inline static const auto GridWidth = QStringLiteral("server/gridWidth");
     inline static const auto Heartbeat = QStringLiteral("server/heartbeat");
+    // Milliseconds of silence from the computer that has the pointer before the
+    // server takes the pointer back. Also caps the keep-alive flatline timer.
+    // 0 disables both. Default is 5000. Other values are clamped to 1s..120s.
+    inline static const auto ActiveClientTimeout = QStringLiteral("server/activeClientTimeout");
     inline static const auto Protocol = QStringLiteral("server/protocol");
     inline static const auto RelativeMouseMoves = QStringLiteral("server/relativeMouseMoves");
     inline static const auto SwitchDelay = QStringLiteral("server/switchDelay");
@@ -330,6 +334,7 @@ private:
     , Server::GridHeight
     , Server::GridWidth
     , Server::Heartbeat
+    , Server::ActiveClientTimeout
     , Server::Protocol
     , Server::RelativeMouseMoves
     , Server::SwitchDelay

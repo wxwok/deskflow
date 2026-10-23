@@ -13,6 +13,7 @@
 #include "deskflow/ProtocolTypes.h"
 #include "server/ClientProxy.h"
 
+#include <chrono>
 #include <vector>
 
 class Event;
@@ -58,6 +59,7 @@ public:
   void fileChunkSending(uint8_t mark, char *data, size_t dataSize) override;
   std::string getSecureInputApp() const override;
   void secureInputNotification(const std::string &app) const override;
+  double secondsSinceLastMessage() const override;
 
 protected:
   virtual bool parseHandshakeMessage(const uint8_t *code);
@@ -83,6 +85,7 @@ private:
   void handleDisconnect();
   void handleWriteError();
   void handleFlatline();
+  void noteClientMessage();
 
   bool recvInfo();
   bool recvGrabClipboard();
@@ -108,6 +111,7 @@ private:
   std::vector<deskflow::MonitorRect> m_monitors;
   double m_heartbeatAlarm;
   EventQueueTimer *m_heartbeatTimer = nullptr;
+  std::chrono::steady_clock::time_point m_lastMessage{};
   MessageParser m_parser = &ClientProxy1_0::parseHandshakeMessage;
   IEventQueue *m_events;
 };

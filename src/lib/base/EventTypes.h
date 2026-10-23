@@ -238,5 +238,10 @@ enum class EventTypes : uint32_t
 
   /// Stop libei
   EISessionClosed,
+
+  /// The portal input-capture session must be destroyed and created again.
+  /// GNOME rejects new pointer barriers on an enabled session, and Disable()
+  /// leaves the pointer grabbed, so recreation is the recovery.
+  InputCaptureRecreate,
 };
 } // namespace deskflow

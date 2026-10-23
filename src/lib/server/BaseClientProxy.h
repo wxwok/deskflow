@@ -51,6 +51,16 @@ public:
     return false;
   }
 
+  //! Seconds since this computer last sent a protocol message.
+  /*!
+  The primary computer is always local, so it reports zero. A remote proxy
+  reports the age of the newest inbound message, including keep-alives.
+  */
+  virtual double secondsSinceLastMessage() const
+  {
+    return 0.0;
+  }
+
   //@}
 
   // IComputer

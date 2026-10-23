@@ -30,6 +30,14 @@ create_test(
 )
 
 create_test(
+  NAME ActiveClientWatchTests
+  DEPENDS server
+  LIBS base arch ${extra_libs}
+  SOURCE ActiveClientWatchTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
+)
+
+create_test(
   NAME ClientProxyTests
   DEPENDS server
   LIBS base arch io mt net platform app ${extra_libs}

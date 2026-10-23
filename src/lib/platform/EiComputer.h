@@ -8,6 +8,7 @@
 #pragma once
 
 #include "deskflow/IComputer.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/PlatformComputer.h"
 #ifdef HAVE_LIBPORTAL_SHORTCUTS
 #include "platform/PortalGlobalShortcuts.h"
@@ -78,6 +79,9 @@ public:
   void enter() override;
   bool canLeave() override;
   void leave() override;
+  /// Portal thread: the enabled session rejected every barrier. Recreate it
+  /// on the event thread once the pointer is on this computer.
+  void scheduleInputCaptureRecreate();
   bool setClipboard(ClipboardID, const IClipboard *) override;
   void checkClipboards() override;
   void openScreensaver(bool notify) override;
@@ -135,6 +139,17 @@ private:
   void stopEmulating() const;
   void cancelIdleEmulationTimer() const;
   void updatePortalGlobalShortcuts();
+  void armCaptureReleaseWatch();
+  void cancelCaptureReleaseWatch();
+  void onCaptureReleaseWatch();
+  void onInputCaptureRecreate();
+  void recreateInputCapture();
+  void resetLocalInputState();
+  /// Drop the libei context. The next EIS fd can then be attached. Must not
+  /// run while ei_dispatch() is on the stack.
+  void replaceEiReceiver();
+  /// Attach \c fd, replacing the libei context first when one is already live.
+  void attachEisBackend(int fd);
 
   static void handleEiLogEvent(ei *ei, const ei_log_priority priority, const char *message, ei_log_context *)
   {
@@ -174,6 +189,21 @@ private:
   // this computer even while the deskflow cursor logically sits on it.
   mutable bool m_isEmulating = false;
   mutable EventQueueTimer *m_idleEmulationTimer = nullptr;
+  // Fires after a return home if the portal grab is still held.
+  EventQueueTimer *m_captureReleaseWatch = nullptr;
+  bool m_captureReleaseNeedsRecreate = false;
+  bool m_recreateScheduled = false;
+  bool m_recreateCaptureOnEnter = false;
+  /// True after ei_setup_backend_fd/socket. A second setup on this context abort()s.
+  bool m_eiBackendAttached = false;
+  /// True while handleSystemEvent is inside ei_dispatch / ei_get_event.
+  bool m_handlingEiEvents = false;
+  /// recreateInputCapture() was requested from inside ei dispatch.
+  bool m_recreateAfterEiDispatch = false;
+  /// EIS fd that arrived while dispatch was still using the old context.
+  int m_pendingEisFd = -1;
+  static constexpr double s_captureReleaseWatchTimeout = 1.0;
+  std::vector<deskflow::EdgeSpan> m_switchEdges;
   // Chosen empirically on one machine in 2026-06; not derived from any protocol constant.
   static constexpr double s_idleEmulationTimeout = 4.0;
 

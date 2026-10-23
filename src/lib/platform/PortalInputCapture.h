@@ -11,6 +11,7 @@
 #include "deskflow/MonitorGeometry.h"
 #include "mt/Thread.h"
 #include "platform/EiComputer.h"
+#include "platform/InputCaptureRecovery.h"
 
 #include <QByteArray>
 
@@ -21,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -39,12 +41,32 @@ public:
   EiClipboard *getClipboard(ClipboardID id) const;
   void enable();
   void disable();
-  void release();
-  void release(double x, double y);
+  /// Queue a plain Release. Returns false when a release is already in flight.
+  bool release();
+  /// Queue one Release: ReleaseAt when \c x, \c y map inside a zone, otherwise a plain Release.
+  bool release(double x, double y);
+  /// True while a Release has been requested and the portal has not deactivated.
+  bool releaseInFlight() const
+  {
+    return m_recovery.phase() == InputCaptureRecovery::CapturePhase::Releasing;
+  }
+  /// Release on this thread and mark the grab idle. Used when the session is about to be destroyed.
+  void releaseSynchronously();
+  /// Drop a Release queued by returning home. The pointer left again and the
+  /// new grab has to stay up so the client keeps receiving it.
+  void cancelPendingRelease();
+  /// EIS start_emulating. \c sequence is the portal activation id.
+  void noteEmulating(std::uint32_t sequence);
+  /// EIS stop_emulating. The event carries no sequence number.
+  void noteStoppedEmulating();
+  bool isEmulating() const
+  {
+    return m_recovery.emulating();
+  }
   void setSwitchEdges(std::vector<deskflow::EdgeSpan> edges);
   bool isActive() const
   {
-    return m_isActive;
+    return m_recovery.captured();
   }
 
 private:
@@ -60,7 +82,26 @@ private:
   void handleActivated(const XdpInputCaptureSession *session, const std::uint32_t activationId, GVariant *options);
   void
   handleDeactivated(const XdpInputCaptureSession *session, const std::uint32_t activationId, const GVariant *options);
-  void handleZonesChanged(XdpInputCaptureSession *session, const GVariant *options);
+  void handleZonesChanged(XdpInputCaptureSession *session, const GVariant *options, bool fresh = true);
+  void queueRelease(bool plain, bool atPosition, double x, double y, std::uint32_t activationId);
+  void scheduleBarrierRetry();
+  void scheduleDeferredBarrierApply();
+  void onCaptureBecameIdle();
+  /// Release a live grab and Close the portal session. Safe to call once.
+  void releaseAndCloseSession();
+
+  struct CaptureRelease
+  {
+    bool plain = false;
+    bool atPosition = false;
+    double x = 0;
+    double y = 0;
+    std::uint32_t activationId = 0;
+  };
+
+  /// Drop a queued Release and return the job so the caller can free it after
+  /// the idle source is gone. The glib callback takes the same job under the lock.
+  std::shared_ptr<CaptureRelease> takeReleaseJob(guint &idleId);
 
   void handleSelectionTransfer(XdpSession *session, const char *mimeType, uint32_t serial) const;
   void readClipboardSelection(XdpSession *session) const;
@@ -169,6 +210,7 @@ private:
 
   XdpPortal *m_portal = nullptr;
   XdpInputCaptureSession *m_session = nullptr;
+  bool m_sessionClosed = false;
 
   std::map<Signal, gulong> m_signals = {
       {Signal::SessionClosed, 0},     {Signal::Disabled, 0},     {Signal::Activated, 0},
@@ -178,8 +220,17 @@ private:
   };
 
   bool m_enabled = false;
-  bool m_isActive = false;
+  InputCaptureRecovery m_recovery;
+  // Kept in sync with m_recovery for the portal calls that still want the id.
   std::uint32_t m_activationId = 0;
+  guint m_releaseIdle = 0;
+  std::shared_ptr<CaptureRelease> m_releaseJob;
+  guint m_barrierRetry = 0;
+  guint m_deferredBarrierIdle = 0;
+  /// Set while a barrier reapply is waiting for the glib thread. The idle
+  /// callback takes it; a recreate or destruction drops it so the callback no-ops.
+  std::shared_ptr<bool> m_deferredBarrierToken;
+  guint m_reenableTimeout = 0;
 
   std::vector<XdpInputCapturePointerBarrier *> m_barriers;
   std::vector<BarrierInfo> m_barrierInfo;

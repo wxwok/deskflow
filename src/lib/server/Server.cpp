@@ -10,6 +10,7 @@
 
 #include "base/IEventQueue.h"
 #include "base/Log.h"
+#include "common/Settings.h"
 #include "deskflow/AppUtil.h"
 #include "deskflow/Computer.h"
 #include "deskflow/DeskflowException.h"
@@ -20,6 +21,7 @@
 #include "deskflow/StreamChunker.h"
 #include "deskflow/ipc/CoreIpc.h"
 #include "net/TCPSocket.h"
+#include "server/ActiveClientWatch.h"
 #include "server/ClientListener.h"
 #include "server/ClientProxy.h"
 #include "server/ClientProxyUnknown.h"
@@ -122,6 +124,13 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Com
     m_primaryClient->fakeInputEnd();
   });
 
+  // Checked once a second. Only the computer that currently has the pointer
+  // is eligible, and a return already in progress is left alone.
+  m_activeClientWatchTimer = m_events->newTimer(1.0, nullptr);
+  m_events->addHandler(EventTypes::Timer, m_activeClientWatchTimer, [this](const auto &) {
+    handleActiveClientWatch();
+  });
+
   // add connection
   addClient(m_primaryClient);
 
@@ -154,6 +163,12 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Com
 
 Server::~Server()
 {
+  if (m_activeClientWatchTimer != nullptr) {
+    m_events->removeHandler(EventTypes::Timer, m_activeClientWatchTimer);
+    m_events->deleteTimer(m_activeClientWatchTimer);
+    m_activeClientWatchTimer = nullptr;
+  }
+
   // remove event handlers and timers
   using enum EventTypes;
   m_events->removeHandler(KeyStateKeyDown, m_inputFilter);
@@ -478,6 +493,10 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
   }
 
   assert(m_active != nullptr);
+
+  // A deliberate switch is not the watchdog's return. Clear the guard so the
+  // computer we land on is watched again.
+  m_forcedReturn = false;
 
   LOG_INFO("switch from \"%s\" to \"%s\" at %d,%d", getName(m_active).c_str(), getName(dst).c_str(), x, y);
 
@@ -1485,6 +1504,36 @@ void Server::handleSwitchWaitTimeout()
   switchComputer(m_switchComputer, m_switchWaitX, m_switchWaitY, false);
 }
 
+double Server::activeClientTimeoutSeconds() const
+{
+  return deskflow::clampActiveClientTimeoutSeconds(Settings::value(Settings::Server::ActiveClientTimeout).toInt());
+}
+
+void Server::handleActiveClientWatch()
+{
+  if (m_active == nullptr || m_active == m_primaryClient) {
+    m_forcedReturn = false;
+  }
+
+  BaseClientProxy *active = m_active;
+  const double timeout = activeClientTimeoutSeconds();
+  const deskflow::ActiveClientWatchInput input{
+      active != nullptr && active != m_primaryClient, m_forcedReturn,
+      active != nullptr ? active->secondsSinceLastMessage() : 0.0, timeout
+  };
+  if (deskflow::decideActiveClientWatch(input) != deskflow::ActiveClientWatchDecision::ForceReturn ||
+      active == nullptr) {
+    return;
+  }
+
+  m_forcedReturn = true;
+  LOG_INFO(
+      "active client \"%s\" has not responded for %.1f s (limit %.1f s); returning focus to \"%s\"",
+      getName(active).c_str(), input.secondsSinceLastMessage, timeout, getName(m_primaryClient).c_str()
+  );
+  closeClient(active, kMsgCClose);
+}
+
 void Server::handleClientDisconnected(BaseClientProxy *client)
 {
   // client has disconnected.  it might be an old client or an
@@ -2193,7 +2242,12 @@ void Server::closeClient(BaseClientProxy *client, const char *msg)
   // send message
   // FIXME -- avoid type cast (kinda hard, though)
   auto clientProxy = static_cast<ClientProxy *>(client);
-  clientProxy->close(msg);
+  try {
+    clientProxy->close(msg);
+  } catch (const std::exception &e) {
+    // A dead peer often fails the write. Still drop it and return the pointer.
+    LOG_WARN("failed to send close to \"%s\": %s", getName(client).c_str(), e.what());
+  }
 
   // install timer.  wait timeout seconds for client to close.
   double timeout = 5.0;
@@ -2271,9 +2325,9 @@ void Server::forceLeaveClient(const BaseClientProxy *client)
 
     // don't notify active computer since it has probably already
     // disconnected.
-    LOG(
-        (CLOG_INFO "jump from \"%s\" to \"%s\" at %d,%d", getName(active).c_str(), getName(m_primaryClient).c_str(),
-         m_x, m_y)
+    LOG_INFO(
+        "forced return to \"%s\" from \"%s\" at %d,%d", getName(m_primaryClient).c_str(), getName(active).c_str(), m_x,
+        m_y
     );
 
     // cut over
