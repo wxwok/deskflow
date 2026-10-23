@@ -1,5 +1,5 @@
-#SPDX - FileCopyrightText : (C)2025 Deskflow Developers
-#SPDX - License - Identifier : MIT
+# SPDX-FileCopyrightText: (C) 2025 Deskflow Developers
+# SPDX-License-Identifier: MIT
 
 #Header - only capture - recovery decisions.No libei or portal linkage.
 create_test(
