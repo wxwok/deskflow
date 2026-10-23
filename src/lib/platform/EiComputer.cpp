@@ -60,6 +60,9 @@ EiComputer::EiComputer(bool isPrimary, IEventQueue *events, bool usePortal)
       handleConnectedToEisEvent(e);
     });
     if (isPrimary) {
+      m_events->addHandler(EventTypes::InputCaptureRecreate, getEventTarget(), [this](const auto &) {
+        onInputCaptureRecreate();
+      });
       // Portal input capture manages its own clipboard
       m_portalInputCapture = new PortalInputCapture(this, m_events);
 #ifdef HAVE_LIBPORTAL_SHORTCUTS
@@ -94,6 +97,7 @@ EiComputer::~EiComputer()
   cancelCaptureReleaseWatch();
   m_events->adoptBuffer(nullptr);
   m_events->removeHandler(EventTypes::System, m_events->getSystemTarget());
+  m_events->removeHandler(EventTypes::InputCaptureRecreate, getEventTarget());
 
   cancelIdleEmulationTimer();
 
@@ -480,15 +484,25 @@ void EiComputer::enter()
     // while the cursor sits here with no relayed activity.
     fakeMouseMove(m_cursorX, m_cursorY);
   } else if (m_isPrimary) {
-    if (m_portalInputCapture != nullptr) {
-      LOG_DEBUG("releasing input capture at x=%i y=%i", m_cursorX, m_cursorY);
-      m_portalInputCapture->release(m_cursorX, m_cursorY);
-    }
     // Buttons and modifiers observed while the grab was active are not the
     // local keyboard's state. Drop them so a dead client cannot leave a click
     // or Shift logically held.
     resetLocalInputState();
-    if (m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
+    if (m_recreateCaptureOnEnter) {
+      m_recreateCaptureOnEnter = false;
+      LOG_INFO("recreating input capture session now the pointer is back on this computer");
+      recreateInputCapture();
+      return;
+    }
+    if (m_portalInputCapture != nullptr) {
+      LOG_DEBUG("releasing input capture at x=%i y=%i", m_cursorX, m_cursorY);
+      // A bounce can activate a new grab before this runs. release() keys off
+      // that id, so a Release already sent for the previous grab is not reused.
+      // Arm the watch even when this call is a no-op: the new grab's
+      // start_emulating can arrive a few milliseconds later, and without the
+      // watch that grab stays held and local clicks never land.
+      m_portalInputCapture->release(m_cursorX, m_cursorY);
+      m_captureReleaseNeedsRecreate = false;
       armCaptureReleaseWatch();
     }
   }
@@ -525,10 +539,56 @@ void EiComputer::cancelCaptureReleaseWatch()
 void EiComputer::onCaptureReleaseWatch()
 {
   cancelCaptureReleaseWatch();
-  if (!m_isPrimary || !m_isOnComputer || m_portalInputCapture == nullptr || !m_portalInputCapture->isActive()) {
+  if (!m_isPrimary || !m_isOnComputer || m_portalInputCapture == nullptr) {
     return;
   }
+  if (!m_portalInputCapture->isActive() && !m_portalInputCapture->isEmulating()) {
+    return;
+  }
+  // The return already asked for a Release. If that id is still held, one
+  // more try; the try after that rebuilds the session. A bounce that changed
+  // the activation id makes release() send the new one instead. A Release
+  // that is already on the glib queue is not a failure yet.
+  if (!m_captureReleaseNeedsRecreate) {
+    if (m_portalInputCapture->release()) {
+      LOG_INFO("input capture still held after returning to this computer; releasing it again");
+      m_captureReleaseNeedsRecreate = true;
+      armCaptureReleaseWatch();
+      return;
+    }
+    if (m_portalInputCapture->releaseInFlight()) {
+      LOG_INFO("input capture release is still in flight after returning to this computer; waiting once more");
+      m_captureReleaseNeedsRecreate = true;
+      armCaptureReleaseWatch();
+      return;
+    }
+  }
   LOG_INFO("input capture was not released after returning to this computer; recreating the session");
+  m_captureReleaseNeedsRecreate = false;
+  recreateInputCapture();
+}
+
+void EiComputer::scheduleInputCaptureRecreate()
+{
+  if (!m_isPrimary || m_events == nullptr || m_recreateScheduled) {
+    return;
+  }
+  m_recreateScheduled = true;
+  m_events->addEvent(Event(EventTypes::InputCaptureRecreate, getEventTarget()));
+}
+
+void EiComputer::onInputCaptureRecreate()
+{
+  m_recreateScheduled = false;
+  if (!m_isPrimary || m_portalInputCapture == nullptr) {
+    return;
+  }
+  if (!m_isOnComputer) {
+    m_recreateCaptureOnEnter = true;
+    LOG_INFO("deferring input capture recreate until the pointer is back on this computer");
+    return;
+  }
+  LOG_INFO("recreating input capture session so local clicks and pointer barriers work");
   recreateInputCapture();
 }
 
@@ -558,7 +618,13 @@ void EiComputer::leave()
 
   // The pointer is leaving again. A pending "did the grab actually drop?"
   // check would otherwise recreate the session under the new computer.
+  // A Release queued by the return must not run either: it would drop the
+  // grab this switch just started.
   cancelCaptureReleaseWatch();
+  m_captureReleaseNeedsRecreate = false;
+  if (m_isPrimary && m_portalInputCapture != nullptr) {
+    m_portalInputCapture->cancelPendingRelease();
+  }
 
   m_bufferDX = 0;
   m_bufferDY = 0;
@@ -893,9 +959,13 @@ void EiComputer::onButtonEvent(ei_event *event)
   // While the portal grab is still held, button events are delivered here
   // instead of to the focused application. PrimaryClient ignores them, so a
   // click would vanish. Release the grab and do not treat the event as input.
-  if (m_isOnComputer && m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
+  if (m_isOnComputer && m_portalInputCapture != nullptr &&
+      (m_portalInputCapture->isActive() || m_portalInputCapture->isEmulating())) {
     if (m_portalInputCapture->release()) {
       LOG_INFO("button event while input capture is still held; releasing capture so local clicks work");
+    } else {
+      LOG_INFO("button event while input capture is still held; recreating the session");
+      recreateInputCapture();
     }
     resetLocalInputState();
     return;
@@ -1009,13 +1079,10 @@ void EiComputer::onMotionEvent(ei_event *event)
     // cursor position directly. A non-finite delta must not swallow that event.
     LOG_DEBUG("event: motion on primary x=%i y=%i", m_cursorX, m_cursorY);
     sendEvent(EventTypes::PrimaryComputerMotionOnPrimary, MotionInfo::alloc(m_cursorX, m_cursorY));
-    // isActive stays true until the portal reports deactivation. A relative
-    // event after we asked to return means the grab is still feeding EIS, so
-    // retry the plain Release. requestRelease ignores the retry once one is
-    // already in flight.
-    if (m_portalInputCapture != nullptr && m_portalInputCapture->isActive()) {
-      m_portalInputCapture->release();
-    }
+    // Do not Release here. This motion is often the barrier hit that should
+    // switch to the client. Releasing it before the server leaves drops the
+    // new grab, and the following return then has nothing it is allowed to
+    // release. enter() and the return watch own that.
     return;
   }
 
@@ -1139,10 +1206,19 @@ void EiComputer::handleSystemEvent(const Event &)
     case EI_EVENT_FRAME:
       break;
     case EI_EVENT_DEVICE_START_EMULATING:
-      LOG_DEBUG("device %s started emulating", ei_device_get_name(device));
+      LOG_DEBUG(
+          "device %s started emulating, sequence=%u", ei_device_get_name(device), ei_event_emulating_get_sequence(event)
+      );
+      if (m_isPrimary && m_portalInputCapture != nullptr) {
+        m_portalInputCapture->noteEmulating(ei_event_emulating_get_sequence(event));
+      }
       break;
     case EI_EVENT_DEVICE_STOP_EMULATING:
+      // stop_emulating has no sequence. libei rejects reading one here.
       LOG_DEBUG("device %s stopped emulating", ei_device_get_name(device));
+      if (m_isPrimary && m_portalInputCapture != nullptr) {
+        m_portalInputCapture->noteStoppedEmulating();
+      }
       break;
     case EI_EVENT_KEYBOARD_KEY:
       onKeyEvent(event);

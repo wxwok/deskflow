@@ -79,6 +79,9 @@ public:
   void enter() override;
   bool canLeave() override;
   void leave() override;
+  /// Portal thread: the enabled session rejected every barrier. Recreate it
+  /// on the event thread once the pointer is on this computer.
+  void scheduleInputCaptureRecreate();
   bool setClipboard(ClipboardID, const IClipboard *) override;
   void checkClipboards() override;
   void openScreensaver(bool notify) override;
@@ -139,6 +142,7 @@ private:
   void armCaptureReleaseWatch();
   void cancelCaptureReleaseWatch();
   void onCaptureReleaseWatch();
+  void onInputCaptureRecreate();
   void recreateInputCapture();
   void resetLocalInputState();
 
@@ -182,6 +186,9 @@ private:
   mutable EventQueueTimer *m_idleEmulationTimer = nullptr;
   // Fires after a return home if the portal grab is still held.
   EventQueueTimer *m_captureReleaseWatch = nullptr;
+  bool m_captureReleaseNeedsRecreate = false;
+  bool m_recreateScheduled = false;
+  bool m_recreateCaptureOnEnter = false;
   static constexpr double s_captureReleaseWatchTimeout = 1.0;
   std::vector<deskflow::EdgeSpan> m_switchEdges;
   // Chosen empirically on one machine in 2026-06; not derived from any protocol constant.

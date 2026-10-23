@@ -22,4 +22,10 @@ private Q_SLOTS:
   void staleDeactivate_doesNotDropANewerGrab();
   void rejectedBarriersWhileHeld_waitForReleaseThenRetryOnce();
   void releasePosition_rejectsTheZoneEdge();
+  void rapidBounce_releasesTheNewGrabAndDropsTheStaleRelease();
+  void rapidBounce_lateStopsDoNotRetireTheNewGrab();
+  void deviceStopsWithoutDeactivate_keepTheGrab();
+  void leaveDuringReturn_keepsTheNewGrab();
+  void enabledSessionRejectsBarriers_recreatesInsteadOfRetrying();
+  void emulatingDevices_holdTheGrabUntilTheLastOneStops();
 };

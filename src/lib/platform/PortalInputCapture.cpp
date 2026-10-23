@@ -243,6 +243,7 @@ PortalInputCapture::~PortalInputCapture()
   guint idle = 0;
   guint releaseIdle = 0;
   guint barrierRetry = 0;
+  guint deferredBarrierIdle = 0;
   guint reenableTimeout = 0;
   std::shared_ptr<CaptureRelease> releaseJob = takeReleaseJob(releaseIdle);
   {
@@ -251,6 +252,9 @@ PortalInputCapture::~PortalInputCapture()
     m_rebuildIdle = 0;
     barrierRetry = m_barrierRetry;
     m_barrierRetry = 0;
+    deferredBarrierIdle = m_deferredBarrierIdle;
+    m_deferredBarrierIdle = 0;
+    m_deferredBarrierToken.reset();
     reenableTimeout = m_reenableTimeout;
     m_reenableTimeout = 0;
   }
@@ -263,6 +267,9 @@ PortalInputCapture::~PortalInputCapture()
   releaseJob.reset();
   if (barrierRetry != 0) {
     g_source_remove(barrierRetry);
+  }
+  if (deferredBarrierIdle != 0) {
+    g_source_remove(deferredBarrierIdle);
   }
   if (reenableTimeout != 0) {
     g_source_remove(reenableTimeout);
@@ -464,6 +471,10 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
   g_autoptr(GError) error = nullptr;
 
   const auto requested = static_cast<int>(m_barriers.size());
+  // GNOME returns every barrier as failed with "Session already enabled"
+  // when this call happens after Enable(). Remember that before enable()
+  // below flips the flag.
+  const bool sessionWasEnabled = m_enabled;
   auto failed_list = xdp_input_capture_session_set_pointer_barriers_finish(m_session, res, &error);
   if (failed_list) {
     auto it = failed_list;
@@ -492,6 +503,26 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
   g_list_free_full(failed_list, g_object_unref);
 
   enable();
+
+  if (requested > 0 && m_barriers.empty() && sessionWasEnabled) {
+    // Retrying SetPointerBarriers fails the same way. Disable() is not a
+    // workaround: on GNOME it leaves the pointer grabbed and EIS silent
+    // (mutter#3908). Recreate the session after the grab is gone.
+    const auto rebuild = m_recovery.noteEnabledSessionRejectedBarriers();
+    if (rebuild == InputCaptureRecovery::SessionRebuild::Now) {
+      LOG_INFO(
+          "all pointer barriers were rejected because the input capture session is already enabled; "
+          "recreating the session"
+      );
+      m_computer->scheduleInputCaptureRecreate();
+    } else {
+      LOG_INFO(
+          "all pointer barriers were rejected because the input capture session is already enabled; "
+          "recreating the session after the pointer is released"
+      );
+    }
+    return;
+  }
 
   // A grab that is still active makes mutter reject the whole set ("failed to
   // apply barrier"). Retry once we are idle; a second total failure is geometry
@@ -817,7 +848,7 @@ bool PortalInputCapture::release()
   if (!request.plain && !request.atPosition) {
     return false;
   }
-  queueRelease(request.plain, request.atPosition, 0, 0);
+  queueRelease(request.plain, false, 0, 0, request.activationId);
   return true;
 }
 
@@ -825,7 +856,7 @@ bool PortalInputCapture::release(double x, double y)
 {
   // Reading the zone bounds is only safe while a grab is held: that is when
   // barrier rebuilds are deferred and will not mutate them.
-  if (!m_recovery.captured()) {
+  if (!m_recovery.captured() && !m_recovery.emulating()) {
     return false;
   }
   bool inside = false;
@@ -843,7 +874,14 @@ bool PortalInputCapture::release(double x, double y)
   if (!request.plain && !request.atPosition) {
     return false;
   }
-  queueRelease(request.plain, request.atPosition, mappedX, mappedY);
+  // One call only. ReleaseAt followed by a plain Release races a barrier
+  // bounce: the warp reactivates capture and the second call drops that new
+  // grab, or is ignored, so the return never releases it.
+  if (request.atPosition) {
+    queueRelease(false, true, mappedX, mappedY, request.activationId);
+  } else {
+    queueRelease(true, false, 0, 0, request.activationId);
+  }
   return true;
 }
 
@@ -873,7 +911,117 @@ void PortalInputCapture::releaseSynchronously()
   m_recovery.setDeactivated(id);
 }
 
-void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, double y)
+void PortalInputCapture::cancelPendingRelease()
+{
+  m_recovery.cancelQueuedRelease();
+  guint releaseIdle = 0;
+  auto releaseJob = takeReleaseJob(releaseIdle);
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+}
+
+void PortalInputCapture::noteEmulating(std::uint32_t sequence)
+{
+  m_recovery.noteEmulating(sequence);
+}
+
+void PortalInputCapture::noteStoppedEmulating()
+{
+  if (m_recovery.noteStoppedEmulating()) {
+    onCaptureBecameIdle();
+  }
+}
+
+void PortalInputCapture::onCaptureBecameIdle()
+{
+  if (m_recovery.takeRecreateSession()) {
+    LOG_INFO("recreating input capture session so pointer barriers can be applied");
+    m_computer->scheduleInputCaptureRecreate();
+    return;
+  }
+  if (!m_recovery.barriersDirty()) {
+    return;
+  }
+  // GNOME rejects SetPointerBarriers for the rest of an enabled session
+  // ("Session already enabled"). Reapplying here fails the same way the
+  // idle retry did. Rebuild the session; its setup applies barriers before
+  // Enable().
+  if (m_enabled) {
+    const auto rebuild = m_recovery.noteEnabledSessionRejectedBarriers();
+    if (rebuild == InputCaptureRecovery::SessionRebuild::Now) {
+      LOG_INFO("pointer barriers changed while the input capture session is enabled; recreating the session");
+      m_computer->scheduleInputCaptureRecreate();
+    } else {
+      LOG_INFO(
+          "pointer barriers changed while the input capture session is enabled; "
+          "recreating the session after the pointer is released"
+      );
+    }
+    return;
+  }
+  LOG_INFO("reapplying pointer barriers after input capture released");
+  scheduleDeferredBarrierApply();
+}
+
+void PortalInputCapture::scheduleDeferredBarrierApply()
+{
+  guint previous = 0;
+  auto token = std::make_shared<bool>(true);
+  std::shared_ptr<bool> discarded;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_deferredBarrierIdle;
+    m_deferredBarrierIdle = 0;
+    discarded = std::move(m_deferredBarrierToken);
+    m_deferredBarrierToken = token;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  discarded.reset();
+
+  // Hop to the glib thread. This runs from the libei dispatch thread, and
+  // libportal is not safe to call there.
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        std::shared_ptr<bool> token;
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          token = std::move(self->m_deferredBarrierToken);
+          self->m_deferredBarrierIdle = 0;
+        }
+        if (!token || !self->m_portalAlive.load() || self->m_session == nullptr) {
+          return G_SOURCE_REMOVE;
+        }
+        if (!self->m_recovery.takeDeferredBarriers()) {
+          return G_SOURCE_REMOVE;
+        }
+        self->handleZonesChanged(self->m_session, nullptr, true);
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  if (idle == 0) {
+    std::lock_guard lock(m_edgeMutex);
+    if (m_deferredBarrierToken == token) {
+      m_deferredBarrierToken.reset();
+    }
+    return;
+  }
+
+  std::lock_guard lock(m_edgeMutex);
+  // The callback may already have taken the token. Only publish the source
+  // id while this request is still the one waiting to run.
+  if (m_deferredBarrierToken == token) {
+    m_deferredBarrierIdle = idle;
+  }
+}
+
+void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, double y, std::uint32_t activationId)
 {
   if ((!plain && !atPosition) || !m_portalAlive.load()) {
     return;
@@ -884,7 +1032,7 @@ void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, dou
   job->atPosition = atPosition;
   job->x = x;
   job->y = y;
-  job->activationId = m_recovery.activationId();
+  job->activationId = activationId;
 
   guint previous = 0;
   auto discarded = takeReleaseJob(previous);
@@ -905,16 +1053,19 @@ void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, dou
         if (!job || !self->m_portalAlive.load() || self->m_session == nullptr) {
           return G_SOURCE_REMOVE;
         }
-        // Plain Release is the call that actually drops the grab. ReleaseAt is
-        // only a cursor warp, and mutter keeps the grab if the point is outside
-        // a zone, so it is never the only call.
-        if (job->atPosition) {
-          LOG_DEBUG("releasing input capture session, id=%u x=%.1f y=%.1f", job->activationId, job->x, job->y);
-          xdp_input_capture_session_release_at(self->m_session, job->activationId, job->x, job->y);
+        const auto claimed = self->m_recovery.claimQueuedRelease(job->activationId);
+        if (!claimed.send) {
+          LOG_INFO("not releasing input capture id=%u; the grab changed or the pointer left again", job->activationId);
+          return G_SOURCE_REMOVE;
         }
-        if (job->plain) {
-          LOG_DEBUG("releasing input capture session, id=%u", job->activationId);
-          xdp_input_capture_session_release(self->m_session, job->activationId);
+        // Exactly one Release. A second call in the same turn lands on the
+        // activation a barrier bounce just started.
+        if (job->atPosition && claimed.activationId == job->activationId) {
+          LOG_INFO("releasing input capture session, id=%u x=%.1f y=%.1f", claimed.activationId, job->x, job->y);
+          xdp_input_capture_session_release_at(self->m_session, claimed.activationId, job->x, job->y);
+        } else {
+          LOG_INFO("releasing input capture session, id=%u", claimed.activationId);
+          xdp_input_capture_session_release(self->m_session, claimed.activationId);
         }
         return G_SOURCE_REMOVE;
       },
@@ -1089,10 +1240,10 @@ void PortalInputCapture::handleDeactivated(
 )
 {
   LOG_DEBUG("cb deactivated, id=%i", activationId);
+  const bool wasCaptured = m_recovery.captured();
   m_recovery.setDeactivated(activationId);
-  if (m_session != nullptr && m_recovery.takeDeferredBarriers()) {
-    LOG_INFO("reapplying pointer barriers after input capture released");
-    handleZonesChanged(m_session, nullptr, true);
+  if (wasCaptured && !m_recovery.captured()) {
+    onCaptureBecameIdle();
   }
 }
 

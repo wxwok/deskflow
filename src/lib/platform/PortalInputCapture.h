@@ -43,10 +43,26 @@ public:
   void disable();
   /// Queue a plain Release. Returns false when a release is already in flight.
   bool release();
-  /// Queue ReleaseAt when \c x, \c y map inside a zone, and always a plain Release.
+  /// Queue one Release: ReleaseAt when \c x, \c y map inside a zone, otherwise a plain Release.
   bool release(double x, double y);
+  /// True while a Release has been requested and the portal has not deactivated.
+  bool releaseInFlight() const
+  {
+    return m_recovery.phase() == InputCaptureRecovery::CapturePhase::Releasing;
+  }
   /// Release on this thread and mark the grab idle. Used when the session is about to be destroyed.
   void releaseSynchronously();
+  /// Drop a Release queued by returning home. The pointer left again and the
+  /// new grab has to stay up so the client keeps receiving it.
+  void cancelPendingRelease();
+  /// EIS start_emulating. \c sequence is the portal activation id.
+  void noteEmulating(std::uint32_t sequence);
+  /// EIS stop_emulating. The event carries no sequence number.
+  void noteStoppedEmulating();
+  bool isEmulating() const
+  {
+    return m_recovery.emulating();
+  }
   void setSwitchEdges(std::vector<deskflow::EdgeSpan> edges);
   bool isActive() const
   {
@@ -67,8 +83,10 @@ private:
   void
   handleDeactivated(const XdpInputCaptureSession *session, const std::uint32_t activationId, const GVariant *options);
   void handleZonesChanged(XdpInputCaptureSession *session, const GVariant *options, bool fresh = true);
-  void queueRelease(bool plain, bool atPosition, double x, double y);
+  void queueRelease(bool plain, bool atPosition, double x, double y, std::uint32_t activationId);
   void scheduleBarrierRetry();
+  void scheduleDeferredBarrierApply();
+  void onCaptureBecameIdle();
 
   struct CaptureRelease
   {
@@ -205,6 +223,10 @@ private:
   guint m_releaseIdle = 0;
   std::shared_ptr<CaptureRelease> m_releaseJob;
   guint m_barrierRetry = 0;
+  guint m_deferredBarrierIdle = 0;
+  /// Set while a barrier reapply is waiting for the glib thread. The idle
+  /// callback takes it; a recreate or destruction drops it so the callback no-ops.
+  std::shared_ptr<bool> m_deferredBarrierToken;
   guint m_reenableTimeout = 0;
 
   std::vector<XdpInputCapturePointerBarrier *> m_barriers;
