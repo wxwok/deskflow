@@ -26,7 +26,10 @@
 using enum ComputerConfig::SwitchCorner;
 
 ServerConfigDialog::ServerConfigDialog(QWidget *parent, ServerConfig &config)
-    : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
+    : QDialog(
+          parent,
+          Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint
+      ),
       ui{std::make_unique<Ui::ServerConfigDialog>()},
       m_columns{Settings::value(Settings::Server::GridWidth).toInt()},
       m_rows{Settings::value(Settings::Server::GridHeight).toInt()},
@@ -63,6 +66,9 @@ ServerConfigDialog::ServerConfigDialog(QWidget *parent, ServerConfig &config)
     deskflow::saveInternalMonitorLayout(m_originalServerConfig);
   });
   initConnections();
+  // The monitor layout is unreadable in the designed 724x609 size. Every open starts maximized;
+  // the title-bar button restores a normal window for this visit only.
+  setWindowState(windowState() | Qt::WindowMaximized);
 }
 
 ServerConfigDialog::~ServerConfigDialog() = default;

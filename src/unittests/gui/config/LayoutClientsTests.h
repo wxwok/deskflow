@@ -20,6 +20,7 @@ private Q_SLOTS:
   void hotkeyTargetsFollowTheComputerTable();
   void movingOneComputerEnablesSave();
   void stackingOrderAndSave();
+  void serverDialogOpensMaximized();
   void renderPreview();
 
 private:

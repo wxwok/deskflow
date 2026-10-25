@@ -25,6 +25,14 @@
 
 namespace {
 
+void showFixedLayout(ServerConfigDialog &dialog)
+{
+  dialog.show();
+  dialog.setWindowState(Qt::WindowNoState);
+  dialog.resize(1200, 900);
+  QApplication::processEvents();
+}
+
 QList<LayoutComputer> twoComputerLayout()
 {
   LayoutComputer work;
@@ -50,8 +58,9 @@ bool dragPlacedComputer(QWidget *dialog, MonitorLayoutWidget *layout, const QStr
     return false;
   }
   tabs->setCurrentWidget(layout);
-  dialog->resize(1200, 900);
   dialog->show();
+  dialog->setWindowState(Qt::WindowNoState);
+  dialog->resize(1200, 900);
   QApplication::processEvents();
   const QPoint start = layout->placedComputerCenter(name);
   if (!layout->rect().contains(start)) {
@@ -315,9 +324,7 @@ void LayoutClientsTests::stackingOrderAndSave()
     QVERIFY(tabs != nullptr);
     QVERIFY(front != nullptr);
     tabs->setCurrentWidget(layout);
-    dialog.resize(1200, 900);
-    dialog.show();
-    QApplication::processEvents();
+    showFixedLayout(dialog);
     const QPoint sp7 = layout->placedComputerCenter(QStringLiteral("sp7"));
     QVERIFY(layout->rect().contains(sp7));
     QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, sp7);
@@ -350,9 +357,7 @@ void LayoutClientsTests::stackingOrderAndSave()
     QVERIFY(back != nullptr);
     QVERIFY(save != nullptr);
     tabs->setCurrentWidget(layout);
-    dialog.resize(1200, 900);
-    dialog.show();
-    QApplication::processEvents();
+    showFixedLayout(dialog);
     QVERIFY(!save->isEnabled());
     layout->update();
     QApplication::processEvents();
@@ -415,9 +420,7 @@ void LayoutClientsTests::stackingOrderAndSave()
     QVERIFY(layout != nullptr);
     QVERIFY(back != nullptr);
     tabs->setCurrentWidget(layout);
-    dialog.resize(1200, 900);
-    dialog.show();
-    QApplication::processEvents();
+    showFixedLayout(dialog);
     QVERIFY(!save->isEnabled());
     const QPoint center = layout->placedComputerCenter(QStringLiteral("sp7"));
     QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, center);
@@ -445,6 +448,16 @@ void LayoutClientsTests::stackingOrderAndSave()
   ServerConfig stillInternal;
   QCOMPARE(stillInternal.monitorLayout(), internalSnapshot);
   Settings::setValue(Settings::Server::ExternalConfig, false);
+}
+
+void LayoutClientsTests::serverDialogOpensMaximized()
+{
+  ServerConfig config;
+  ServerConfigDialog dialog(nullptr, config);
+  QVERIFY(dialog.windowState().testFlag(Qt::WindowMaximized));
+  dialog.show();
+  QApplication::processEvents();
+  QVERIFY(dialog.isMaximized());
 }
 
 void LayoutClientsTests::renderPreview()
