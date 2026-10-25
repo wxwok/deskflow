@@ -13,6 +13,7 @@
 #include "gui/widgets/MonitorLayoutWidget.h"
 
 #include <QApplication>
+
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
@@ -22,6 +23,7 @@
 #include <QTabWidget>
 #include <QTest>
 #include <QTranslator>
+#include <cmath>
 
 namespace {
 
@@ -460,6 +462,82 @@ void LayoutClientsTests::serverDialogOpensMaximized()
   QVERIFY(dialog.isMaximized());
 }
 
+void sendMove(QWidget *widget, const QPoint &pos)
+{
+  QMouseEvent move(
+      QEvent::MouseMove, QPointF(pos), widget->mapToGlobal(pos), Qt::NoButton, Qt::NoButton, Qt::NoModifier
+  );
+  QApplication::sendEvent(widget, &move);
+  QApplication::processEvents();
+}
+
+void LayoutClientsTests::stackHoverStaysOnTheFrame()
+{
+  Settings::setValue(Settings::Core::ComputerName, QStringLiteral("work"));
+  QList<LayoutComputer> stacked;
+  LayoutComputer sp7;
+  sp7.name = QStringLiteral("sp7");
+  sp7.z = 2;
+  sp7.monitors.append({QStringLiteral("sp7"), 0, 0, 3840, 2160});
+  LayoutComputer sur3;
+  sur3.name = QStringLiteral("sur3");
+  sur3.z = 1;
+  sur3.monitors.append({QStringLiteral("sur3"), 0, 0, 2560, 1440});
+  LayoutComputer dream;
+  dream.name = QStringLiteral("dream");
+  dream.z = 0;
+  dream.monitors.append({QStringLiteral("dream"), 0, 0, 1920, 1080});
+  stacked.append(sp7);
+  stacked.append(sur3);
+  stacked.append(dream);
+  ServerConfig config;
+  config.setMonitorLayout(stacked);
+  config.setUseMonitorLayout(true);
+  MonitorLayoutWidget widget(config);
+  widget.resize(1100, 720);
+  widget.show();
+  QApplication::processEvents();
+
+  const QRect screen = widget.placedMonitorRect(QStringLiteral("sp7"));
+  QVERIFY(screen.width() > 400);
+  QVERIFY(screen.height() > 240);
+  const QPoint corner = screen.topLeft() + QPoint(16, 16);
+  const QPoint other = screen.topRight() + QPoint(-16, 40);
+  QVERIFY(screen.contains(corner));
+  QVERIFY(screen.contains(other));
+
+  QImage idle(widget.size(), QImage::Format_ARGB32_Premultiplied);
+  idle.fill(Qt::white);
+  widget.render(&idle);
+  const QColor idleFrame = idle.pixelColor(corner);
+
+  sendMove(&widget, corner);
+  const QRect front = widget.stackFanCard(QStringLiteral("sp7"));
+  const QRect middle = widget.stackFanCard(QStringLiteral("sur3"));
+  const QRect back = widget.stackFanCard(QStringLiteral("dream"));
+  QVERIFY(front.isValid());
+  QVERIFY(middle.isValid());
+  QVERIFY(back.isValid());
+  const QPoint fanCenter = front.united(middle).united(back).center();
+  QVERIFY(std::abs(fanCenter.x() - screen.center().x()) <= 2);
+  QVERIFY(std::abs(fanCenter.y() - screen.center().y()) <= 2);
+  QVERIFY(std::hypot(fanCenter.x() - corner.x(), fanCenter.y() - corner.y()) > 80.0);
+
+  sendMove(&widget, other);
+  QCOMPARE(widget.stackFanCard(QStringLiteral("sp7")), front);
+  QCOMPARE(widget.stackFanCard(QStringLiteral("sur3")), middle);
+  QCOMPARE(widget.stackFanCard(QStringLiteral("dream")), back);
+
+  QImage hovered(widget.size(), QImage::Format_ARGB32_Premultiplied);
+  hovered.fill(Qt::white);
+  widget.render(&hovered);
+  const QColor hoverFrame = hovered.pixelColor(corner);
+  const int drift = std::abs(idleFrame.red() - hoverFrame.red()) + std::abs(idleFrame.green() - hoverFrame.green()) +
+                    std::abs(idleFrame.blue() - hoverFrame.blue());
+  QVERIFY(drift < 24);
+  QVERIFY(hoverFrame.lightness() < 180);
+}
+
 void LayoutClientsTests::renderPreview()
 {
   const auto directory = qEnvironmentVariable("DESKFLOW_LAYOUT_PREVIEW");
@@ -547,12 +625,9 @@ void LayoutClientsTests::renderPreview()
   stackWidget.render(&idle);
   QVERIFY(idle.save(QStringLiteral("%1/stack-idle.png").arg(directory)));
 
-  const QPoint hover = stackWidget.placedComputerCenter(QStringLiteral("sp7"));
-  QMouseEvent move(
-      QEvent::MouseMove, QPointF(hover), stackWidget.mapToGlobal(hover), Qt::NoButton, Qt::NoButton, Qt::NoModifier
-  );
-  QApplication::sendEvent(&stackWidget, &move);
-  QApplication::processEvents();
+  const QRect screen = stackWidget.placedMonitorRect(QStringLiteral("sp7"));
+  const QPoint hover = screen.topLeft() + QPoint(24, 24);
+  sendMove(&stackWidget, hover);
   QImage fanned(stackWidget.size(), QImage::Format_ARGB32_Premultiplied);
   fanned.fill(Qt::white);
   stackWidget.render(&fanned);

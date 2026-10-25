@@ -425,6 +425,38 @@ QPoint MonitorLayoutWidget::placedComputerCenter(const QString &name) const
   return {};
 }
 
+QRect MonitorLayoutWidget::placedMonitorRect(const QString &name) const
+{
+  const auto transform = viewTransform();
+  for (const auto &computer : m_layout) {
+    if (computer.name != name) {
+      continue;
+    }
+    const auto *monitor = largestMonitor(computer);
+    if (monitor == nullptr) {
+      return {};
+    }
+    const auto global = monitorGlobal(computer, *monitor);
+    return {
+        static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)),
+        static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)),
+        std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
+        std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
+    };
+  }
+  return {};
+}
+
+QRect MonitorLayoutWidget::stackFanCard(const QString &name) const
+{
+  for (int index = 0; index < m_layout.size(); ++index) {
+    if (m_layout.at(index).name == name) {
+      return fanCardRect(index);
+    }
+  }
+  return {};
+}
+
 void MonitorLayoutWidget::refreshDiscovery()
 {
   while (QLayoutItem *item = m_discoveryLayout->takeAt(0)) {
@@ -592,10 +624,9 @@ int MonitorLayoutWidget::computerAt(const QPointF &widgetPoint, bool includeServ
 
   const auto transform = viewTransform();
   const auto order = paintOrder();
-  const auto fanned = m_fanGroup >= 0 ? overlapGroup(m_fanGroup) : QList<int>{};
   for (int place = order.size() - 1; place >= 0; --place) {
     const int index = order.at(place);
-    if (skip(index) || fanned.contains(index)) {
+    if (skip(index)) {
       continue;
     }
     const auto &computer = m_layout.at(index);
@@ -720,9 +751,6 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
     const bool reported = m_reported.contains(computer.name);
     const bool selected = index == m_selected;
     const bool fanned = m_fanGroup >= 0 && overlapGroup(m_fanGroup).contains(index);
-    if (fanned) {
-      continue;
-    }
     const bool showOwnName = !stacked || !fullyCovered(index);
     const auto *primary = largestMonitor(computer);
     for (const auto &monitor : computer.monitors) {
@@ -733,7 +761,7 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
           std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
           std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
       );
-      const bool hostsRoster = stacked && top && primary == &monitor;
+      const bool hostsRoster = stacked && top && primary == &monitor && !fanned;
       if (top) {
         painter.fillRect(painted.translated(4, 4), QColor(0, 0, 0, 50));
       }
@@ -1152,7 +1180,6 @@ void MonitorLayoutWidget::updateFan(const QPointF &widgetPoint)
   if (next == m_fanGroup) {
     return;
   }
-  m_fanCursor = widgetPoint.toPoint();
   m_fanGroup = next;
   update();
 }
@@ -1173,46 +1200,35 @@ QRect MonitorLayoutWidget::fanCardRect(int index) const
     return {};
   }
 
-  const int cardW = 232;
-  const int cardH = 148;
-  int minX = 8;
-  int minY = 8;
-  if (m_controls != nullptr) {
-    minY = std::max(minY, m_controls->geometry().bottom() + 6);
+  const QRect frame = placedMonitorRect(m_layout.at(order.constFirst()).name);
+  if (frame.isEmpty()) {
+    return {};
   }
-  const int availW = std::max(cardW, width() - minX - 8);
-  const int availH = std::max(cardH, height() - minY - 8);
-  int stepX = 112;
-  int stepY = 68;
-  if (count > 1) {
-    stepX = std::min(stepX, std::max(48, (availW - cardW) / (count - 1)));
-    stepY = std::min(stepY, std::max(32, (availH - cardH) / (count - 1)));
+  int cardW = 220;
+  int cardH = 140;
+  int stepX = 88;
+  int stepY = 52;
+  const int slots = count - 1;
+  auto fits = [&](int width, int height, int dx, int dy) {
+    return width + slots * dx <= std::max(1, frame.width() - 12) &&
+           height + slots * dy <= std::max(1, frame.height() - 12);
+  };
+  if (!fits(cardW, cardH, stepX, stepY) && slots > 0) {
+    const double scale = std::min(
+        (frame.width() - 12) / static_cast<double>(cardW + slots * stepX),
+        (frame.height() - 12) / static_cast<double>(cardH + slots * stepY)
+    );
+    if (scale > 0.0 && scale < 1.0) {
+      cardW = std::max(96, static_cast<int>(std::lround(cardW * scale)));
+      cardH = std::max(72, static_cast<int>(std::lround(cardH * scale)));
+      stepX = std::max(24, static_cast<int>(std::lround(stepX * scale)));
+      stepY = std::max(18, static_cast<int>(std::lround(stepY * scale)));
+    }
   }
-  const int spanX = (count - 1) * stepX;
-  const int spanY = (count - 1) * stepY;
-  QPoint front(m_fanCursor.x() - cardW / 2, m_fanCursor.y() - cardH / 3);
-  const int left = front.x() - spanX;
-  const int top = front.y();
-  const int right = front.x() + cardW;
-  const int bottom = front.y() + cardH + spanY;
-  int shiftX = 0;
-  int shiftY = 0;
-  if (left < minX) {
-    shiftX = minX - left;
-  }
-  if (right + shiftX > minX + availW) {
-    shiftX += (minX + availW) - (right + shiftX);
-  }
-  if (top < minY) {
-    shiftY = minY - top;
-  }
-  if (bottom + shiftY > minY + availH) {
-    shiftY += (minY + availH) - (bottom + shiftY);
-  }
-  front += QPoint(shiftX, shiftY);
-  if (!QRect(front, QSize(cardW, cardH)).contains(m_fanCursor)) {
-    front = QPoint(m_fanCursor.x() - cardW / 2, m_fanCursor.y() - cardH / 3);
-  }
+  const int fanW = cardW + slots * stepX;
+  const int fanH = cardH + slots * stepY;
+  const QPoint center = frame.center();
+  const QPoint front(center.x() - fanW / 2 + slots * stepX, center.y() - fanH / 2);
   return {front + QPoint(-rank * stepX, rank * stepY), QSize(cardW, cardH)};
 }
 

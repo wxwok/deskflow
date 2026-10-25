@@ -57,6 +57,12 @@ public:
   //! Idle roster row for a stacked computer, in widget coordinates. Invalid when it is not shown.
   QRect stackRosterChip(const QString &name) const;
 
+  //! Widget rectangle of a placed computer's largest monitor. Invalid when it is not placed.
+  QRect placedMonitorRect(const QString &name) const;
+
+  //! Hover card for a stacked computer. Invalid unless that stack is fanned open.
+  QRect stackFanCard(const QString &name) const;
+
 Q_SIGNALS:
   void layoutChanged();
   //! The internal monitor layout was committed to the general config and the caller's ServerConfig.
@@ -144,10 +150,8 @@ private:
     QRect rect;
   };
   QList<NameChip> m_nameChips;
-  //! A computer in the stack currently fanned open, or -1.
+  //! A computer in the stack currently fanned open, or -1. Cards stay on that screen.
   int m_fanGroup = -1;
-  //! Widget point that opened the fan. The front card stays under it.
-  QPoint m_fanCursor;
   bool m_reloading = false;
   QSpinBox *m_originX = nullptr;
   QSpinBox *m_originY = nullptr;

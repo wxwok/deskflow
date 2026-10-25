@@ -21,6 +21,7 @@ private Q_SLOTS:
   void movingOneComputerEnablesSave();
   void stackingOrderAndSave();
   void serverDialogOpensMaximized();
+  void stackHoverStaysOnTheFrame();
   void renderPreview();
 
 private:
