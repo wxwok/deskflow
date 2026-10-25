@@ -258,34 +258,34 @@ void MonitorLayoutTests::snapAdjacencyAndAlignment()
   QVERIFY(exact.guides.empty());
 }
 
-void MonitorLayoutTests::snapRejectsOverlap()
+void MonitorLayoutTests::snapAllowsOverlap()
 {
   const std::vector<deskflow::SnapRect> still = {placed(0, 0, 0, 1000, 1000)};
 
-  // Inside, and no edge is within the threshold: push out to the nearest touch.
-  // Left and up cost the same; the left push is kept.
-  const auto pushed = deskflow::snapMonitorPlacement({placed(1, 10, 10, 100, 100)}, still, 5, true);
-  QCOMPARE(pushed.dx, -110);
-  QCOMPARE(pushed.dy, 0);
-  QVERIFY(!pushed.snappedX);
-  QVERIFY(pushed.guides.empty());
+  // Inside, and no edge is within the threshold: the overlap stays.
+  const auto kept = deskflow::snapMonitorPlacement({placed(1, 10, 10, 100, 100)}, still, 5, true);
+  QCOMPARE(kept.dx, 0);
+  QCOMPARE(kept.dy, 0);
+  QVERIFY(!kept.snappedX);
+  QVERIFY(kept.guides.empty());
 
-  // Aligning both edges would stay buried inside. That snap is rejected.
+  // Aligning both edges stays buried inside. That is a stack, so the snap is kept.
   const std::vector<deskflow::SnapRect> host = {placed(0, 0, 0, 200, 200)};
-  const auto rejected = deskflow::snapMonitorPlacement({placed(1, 5, 5, 100, 100)}, host, 15, true);
-  QCOMPARE(rejected.dx, -105);
-  QCOMPARE(rejected.dy, 0);
-  QVERIFY(!rejected.snappedX);
+  const auto aligned = deskflow::snapMonitorPlacement({placed(1, 5, 5, 100, 100)}, host, 15, true);
+  QCOMPARE(aligned.dx, -5);
+  QCOMPARE(aligned.dy, -5);
+  QVERIFY(aligned.snappedX);
+  QVERIFY(aligned.snappedY);
 
-  // An edge that is close enough pulls the group out to a touch instead of a push from the center.
+  // An edge that is close enough still snaps out to a touch.
   const auto pulled = deskflow::snapMonitorPlacement({placed(1, 190, 50, 100, 100)}, host, 15, true);
   QCOMPARE(pulled.dx, 10);
   QCOMPARE(pulled.dy, 0);
   QVERIFY(pulled.snappedX);
 
-  // Snapping off still refuses the overlap.
+  // Snapping off keeps the overlap instead of pushing it apart.
   const auto free = deskflow::snapMonitorPlacement({placed(1, 10, 10, 100, 100)}, still, 15, false);
-  QCOMPARE(free.dx, -110);
+  QCOMPARE(free.dx, 0);
   QCOMPARE(free.dy, 0);
 }
 
@@ -316,6 +316,87 @@ void MonitorLayoutTests::switchEdgeSegments()
   QCOMPARE(bottom[0].position, 100);
   QCOMPARE(bottom[0].begin, 10);
   QCOMPARE(bottom[0].end, 40);
+}
+
+void MonitorLayoutTests::stackTopReceivesTheOverlap()
+{
+  MonitorLayout layout;
+  layout.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 0);
+  layout.setComputer("sur3", 100, 100, {monitor("sur3", 0, 0, 800, 600)}, true, 1);
+  layout.setComputer("sp7", 100, 100, {monitor("sp7", 0, 0, 400, 300)}, true, 2);
+
+  const auto covered = layout.stackTarget("work", 150, 150);
+  QVERIFY(covered.has_value());
+  QVERIFY(covered->computer == "sp7");
+  QCOMPARE(covered->x, 50);
+  QCOMPARE(covered->y, 50);
+
+  // The part of work that nothing covers is still work.
+  QVERIFY(!layout.stackTarget("work", 10, 10).has_value());
+
+  int32_t clampX = 0;
+  int32_t clampY = 0;
+  const auto entered = layout.travel("work", 10, 10, 150, 150, clampX, clampY);
+  QVERIFY(entered.has_value());
+  QVERIFY(entered->computer == "sp7");
+
+  // Stepping off sp7 lands on sur3, which is still above work. sp7 does not keep the pointer.
+  const auto dropped = layout.travel("sp7", 200, 100, 400, 100, clampX, clampY);
+  QVERIFY(dropped.has_value());
+  QVERIFY(dropped->computer == "sur3");
+  QCOMPARE(dropped->x, 400);
+  QCOMPARE(dropped->y, 100);
+
+  // A disabled front computer is not a target. The next one down receives the point.
+  layout.setComputer("sp7", 100, 100, {monitor("sp7", 0, 0, 400, 300)}, false, 2);
+  const auto skipped = layout.stackTarget("work", 150, 150);
+  QVERIFY(skipped.has_value());
+  QVERIFY(skipped->computer == "sur3");
+
+  // Raising work above the stack gives the overlap back to work.
+  layout.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 5);
+  QVERIFY(!layout.stackTarget("work", 150, 150).has_value());
+  const auto under = layout.stackTarget("sur3", 50, 50);
+  QVERIFY(under.has_value());
+  QVERIFY(under->computer == "work");
+}
+
+void MonitorLayoutTests::layoutZOrderRoundTrip()
+{
+  const char *text = R"(section: layout
+	work:
+		origin = 0, 0
+		z = 0
+		monitor = work, 0, 0, 1920, 1080
+	sp7:
+		origin = 0, 0
+		z = 3
+		monitor = sp7, 0, 0, 800, 600
+end
+)";
+  std::stringstream input(text);
+  Config parsed(nullptr);
+  input >> parsed;
+  const auto sp7 = parsed.monitorPlacements().find("sp7");
+  QVERIFY(sp7 != parsed.monitorPlacements().end());
+  QCOMPARE(sp7->second.z, 3);
+  QCOMPARE(parsed.monitorPlacements().find("work")->second.z, 0);
+
+  std::stringstream output;
+  output << parsed;
+  QVERIFY(output.str().find("z = 3") != std::string::npos);
+
+  const char *legacy = R"(section: layout
+	work:
+		origin = 1, 2
+		monitor = work, 0, 0, 100, 80
+end
+)";
+  std::stringstream oldInput(legacy);
+  Config oldConfig(nullptr);
+  oldInput >> oldConfig;
+  QCOMPARE(oldConfig.monitorPlacements().find("work")->second.z, 0);
+  QCOMPARE(oldConfig.monitorPlacements().find("work")->second.originX, 1);
 }
 
 void MonitorLayoutTests::disabledComputerIsNotASwitchTarget()

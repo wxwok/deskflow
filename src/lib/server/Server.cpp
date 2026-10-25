@@ -884,7 +884,9 @@ void Server::rebuildMonitorLayout()
       }
       const auto canonical = getName(client);
       const bool enabled = m_config == nullptr || !m_config->isComputerDisabled(canonical);
-      m_monitorLayout.setComputer(canonical, placement.originX, placement.originY, std::move(monitors), enabled);
+      m_monitorLayout.setComputer(
+          canonical, placement.originX, placement.originY, std::move(monitors), enabled, placement.z
+      );
     }
   }
 
@@ -1840,6 +1842,10 @@ bool Server::onMouseMovePrimary(int32_t x, int32_t y)
   m_y = y;
 
   if (m_monitorLayout.enabled()) {
+    if (const auto stacked = m_monitorLayout.stackTarget(getName(m_active), x, y);
+        stacked.has_value() && switchByLayout(*stacked, x, y)) {
+      return true;
+    }
     std::optional<deskflow::MonitorCrossing> horizontal;
     std::optional<deskflow::MonitorCrossing> vertical;
     m_monitorLayout.hitEdges(getName(m_active), x, y, getJumpZoneSize(m_active), horizontal, vertical);

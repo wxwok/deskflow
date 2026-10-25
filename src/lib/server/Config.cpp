@@ -752,7 +752,7 @@ void Config::readSectionLinks(ConfigReadContext &s)
 }
 
 void Config::setMonitorPlacement(
-    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors, int32_t z
 )
 {
   std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
@@ -760,7 +760,7 @@ void Config::setMonitorPlacement(
     m_monitorPlacements.erase(name);
     return;
   }
-  m_monitorPlacements.insert_or_assign(name, MonitorPlacement{originX, originY, std::move(monitors)});
+  m_monitorPlacements.insert_or_assign(name, MonitorPlacement{originX, originY, std::move(monitors), z});
 }
 
 void Config::clearMonitorLayout()
@@ -815,14 +815,16 @@ void Config::readSectionLayout(ConfigReadContext &s)
   std::string computer;
   int32_t originX = 0;
   int32_t originY = 0;
+  int32_t z = 0;
   std::vector<deskflow::MonitorRect> monitors;
   const auto commit = [&]() {
     if (!computer.empty()) {
-      setMonitorPlacement(computer, originX, originY, monitors);
+      setMonitorPlacement(computer, originX, originY, monitors, z);
     }
     monitors.clear();
     originX = 0;
     originY = 0;
+    z = 0;
   };
 
   while (s.readLine(line)) {
@@ -885,6 +887,10 @@ void Config::readSectionLayout(ConfigReadContext &s)
         monitorName += parts[index];
       }
       monitors.push_back(deskflow::MonitorRect{monitorName, x, y, width, height});
+    } else if (key == "z") {
+      if (!parseInt(value, z)) {
+        throw ServerConfigReadException(s, "invalid layout z");
+      }
     } else {
       throw ServerConfigReadException(s, "unknown layout key \"%{1}\"", key);
     }
@@ -1460,6 +1466,7 @@ std::ostream &operator<<(std::ostream &s, const Config &config)
     for (const auto &[name, placement] : config.m_monitorPlacements) {
       s << "\t" << name << ":" << std::endl;
       s << "\t\torigin = " << placement.originX << ", " << placement.originY << std::endl;
+      s << "\t\tz = " << placement.z << std::endl;
       for (const auto &monitor : placement.monitors) {
         s << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width << ", "
           << monitor.height << std::endl;

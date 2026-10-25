@@ -12,9 +12,11 @@
 #include <QCheckBox>
 #include <QEvent>
 #include <QFile>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPoint>
@@ -24,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace {
@@ -36,6 +39,30 @@ constexpr int kOriginLimit = 20000000;
 QRect monitorGlobal(const LayoutComputer &computer, const LayoutMonitor &monitor)
 {
   return {computer.originX + monitor.x, computer.originY + monitor.y, monitor.width, monitor.height};
+}
+
+bool areasOverlap(const QRect &a, const QRect &b)
+{
+  return a.x() < b.x() + b.width() && b.x() < a.x() + a.width() && a.y() < b.y() + b.height() &&
+         b.y() < a.y() + a.height();
+}
+
+bool areaContains(const QRect &outer, const QRect &inner)
+{
+  return inner.x() >= outer.x() && inner.y() >= outer.y() && inner.x() + inner.width() <= outer.x() + outer.width() &&
+         inner.y() + inner.height() <= outer.y() + outer.height();
+}
+
+bool computersOverlap(const LayoutComputer &a, const LayoutComputer &b)
+{
+  for (const auto &left : a.monitors) {
+    for (const auto &right : b.monitors) {
+      if (areasOverlap(monitorGlobal(a, left), monitorGlobal(b, right))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -57,6 +84,21 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   m_status->setWordWrap(true);
   auto *reload = new QPushButton(tr("Reload reported geometry"), m_controls);
   m_participation = new QPushButton(tr("Disable"), m_controls);
+  m_stackFront = new QPushButton(tr("Bring to front"), m_controls);
+  m_stackUp = new QPushButton(tr("Move up one"), m_controls);
+  m_stackDown = new QPushButton(tr("Move down one"), m_controls);
+  m_stackBack = new QPushButton(tr("Send to back"), m_controls);
+  m_stackFront->setObjectName(QStringLiteral("stack-front"));
+  m_stackUp->setObjectName(QStringLiteral("stack-up"));
+  m_stackDown->setObjectName(QStringLiteral("stack-down"));
+  m_stackBack->setObjectName(QStringLiteral("stack-back"));
+  const auto stackTip =
+      tr("Reorder computers that overlap. The front screen receives the pointer; screens underneath are paused there, "
+         "not disabled. These stay off when the selection does not overlap another computer.");
+  m_stackFront->setToolTip(stackTip);
+  m_stackUp->setToolTip(stackTip);
+  m_stackDown->setToolTip(stackTip);
+  m_stackBack->setToolTip(stackTip);
   auto *originRow = new QHBoxLayout();
   m_originLabel = new QLabel(tr("No computer selected"), m_controls);
   m_originX = new QSpinBox(m_controls);
@@ -76,6 +118,10 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   originRow->addWidget(m_originX);
   originRow->addWidget(m_originY);
   originRow->addWidget(m_participation);
+  originRow->addWidget(m_stackFront);
+  originRow->addWidget(m_stackUp);
+  originRow->addWidget(m_stackDown);
+  originRow->addWidget(m_stackBack);
   originRow->addStretch(1);
   controls->addWidget(m_enabled);
   controls->addWidget(m_hint);
@@ -87,6 +133,7 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   layout->addStretch(1);
   setMinimumSize(640, 480);
   setFocusPolicy(Qt::StrongFocus);
+  setMouseTracking(true);
 
   connect(m_enabled, &QCheckBox::toggled, this, [this](bool checked) {
     if (m_reloading) {
@@ -96,6 +143,10 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
     store();
   });
   connect(m_participation, &QPushButton::clicked, this, &MonitorLayoutWidget::toggleParticipation);
+  connect(m_stackFront, &QPushButton::clicked, this, [this]() { restack(StackMove::Front); });
+  connect(m_stackUp, &QPushButton::clicked, this, [this]() { restack(StackMove::Up); });
+  connect(m_stackDown, &QPushButton::clicked, this, [this]() { restack(StackMove::Down); });
+  connect(m_stackBack, &QPushButton::clicked, this, [this]() { restack(StackMove::Back); });
   connect(reload, &QPushButton::clicked, this, [this]() {
     reloadReported();
     store();
@@ -123,10 +174,12 @@ bool MonitorLayoutWidget::isExternal() const
 void MonitorLayoutWidget::updateHint()
 {
   const auto drag =
-      tr("Drag a computer so its monitors touch another computer. Edges within about 12 px snap together "
-         "and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; "
-         "hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. "
-         "Leave this off to keep the grid links.");
+      tr("Drag a computer so its monitors touch or overlap another computer. Edges within about 12 px snap "
+         "together and line up; hold Alt or Shift to turn snapping off. A computer you drop on top of another "
+         "comes to the front. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. "
+         "The server stays put. Orange lines are the edges that will switch. Where screens overlap, only the front "
+         "one receives the pointer; the ones underneath are paused there and stay in the layout. Leave this off to "
+         "keep the grid links.");
   if (!isExternal()) {
     m_hint->setText(drag);
     m_enabled->setEnabled(true);
@@ -412,14 +465,15 @@ void MonitorLayoutWidget::refreshParticipation()
     m_participation->setToolTip(
         tr("Disable the selected computer. Its position is kept, and the pointer will not switch to it.")
     );
-    return;
+  } else {
+    const bool disabled = deskflow::isComputerDisabled(m_layout.at(m_selected).name);
+    m_participation->setText(disabled ? tr("Enable") : tr("Disable"));
+    m_participation->setToolTip(
+        disabled ? tr("Enable the selected computer and restore pointer switching.")
+                 : tr("Disable the selected computer. Its position is kept, and the pointer will not switch to it.")
+    );
   }
-  const bool disabled = deskflow::isComputerDisabled(m_layout.at(m_selected).name);
-  m_participation->setText(disabled ? tr("Enable") : tr("Disable"));
-  m_participation->setToolTip(
-      disabled ? tr("Enable the selected computer and restore pointer switching.")
-               : tr("Disable the selected computer. Its position is kept, and the pointer will not switch to it.")
-  );
+  updateStackButtons();
 }
 
 void MonitorLayoutWidget::addDiscovered(const QString &name)
@@ -502,17 +556,30 @@ MonitorLayoutWidget::Transform MonitorLayoutWidget::viewTransform() const
 
 int MonitorLayoutWidget::computerAt(const QPointF &widgetPoint, bool includeServer) const
 {
+  const auto skip = [&](int index) { return !includeServer && m_layout.at(index).name == m_serverName; };
+  if (m_fanGroup < 0) {
+    for (auto chip = m_nameChips.crbegin(); chip != m_nameChips.crend(); ++chip) {
+      if (chip->rect.contains(widgetPoint.toPoint()) && !skip(chip->index)) {
+        return chip->index;
+      }
+    }
+  }
+
   const auto transform = viewTransform();
-  for (int index = m_layout.size() - 1; index >= 0; --index) {
-    const auto &computer = m_layout.at(index);
-    if (!includeServer && computer.name == m_serverName) {
+  const auto order = paintOrder();
+  for (int place = order.size() - 1; place >= 0; --place) {
+    const int index = order.at(place);
+    if (skip(index)) {
       continue;
     }
+    const QPoint fan = fanOffset(index);
+    const auto &computer = m_layout.at(index);
     for (const auto &monitor : computer.monitors) {
       const auto global = monitorGlobal(computer, monitor);
       const QRectF painted(
-          transform.originX + global.x() * transform.scale, transform.originY + global.y() * transform.scale,
-          global.width() * transform.scale, global.height() * transform.scale
+          transform.originX + global.x() * transform.scale + fan.x(),
+          transform.originY + global.y() * transform.scale + fan.y(), global.width() * transform.scale,
+          global.height() * transform.scale
       );
       if (painted.contains(widgetPoint)) {
         return index;
@@ -560,6 +627,7 @@ void MonitorLayoutWidget::moveComputer(int index, int originX, int originY, bool
   auto &computer = m_layout[index];
   computer.originX = originX + result.dx;
   computer.originY = originY + result.dy;
+  raiseIfOverlapping(index);
   m_guides = m_dragIndex == index ? result.guides : std::vector<deskflow::SnapGuide>{};
   syncOriginFields();
 }
@@ -613,36 +681,50 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
   };
 
   int clientOrdinal = 0;
-  for (int index = 0; index < m_layout.size(); ++index) {
+  const auto order = paintOrder();
+  for (const int index : order) {
     const auto &computer = m_layout.at(index);
     const bool server = computer.name == m_serverName;
     const bool disabled = deskflow::isComputerDisabled(computer.name);
-    const QColor fill =
-        disabled ? QColor(90, 90, 90) : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
+    const auto group = overlapGroup(index);
+    const bool stacked = group.size() > 1;
+    const bool top = stacked && stackOrder(group).constFirst() == index;
+    QColor fill = disabled ? QColor(90, 90, 90) : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
+    if (stacked && !top && !disabled) {
+      fill.setAlpha(150);
+    }
     const bool reported = m_reported.contains(computer.name);
     const bool selected = index == m_selected;
+    const QPoint fan = fanOffset(index);
+    const bool showOwnName = !stacked || m_fanGroup >= 0 || !fullyCovered(index);
     for (const auto &monitor : computer.monitors) {
       const auto global = monitorGlobal(computer, monitor);
       const QRect painted(
-          static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)),
-          static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)),
+          static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)) + fan.x(),
+          static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)) + fan.y(),
           std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
           std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
       );
+      if (top) {
+        painter.fillRect(painted.translated(4, 4), QColor(0, 0, 0, 50));
+      }
       painter.fillRect(painted, fill);
-      QPen pen(selected ? QColor(255, 220, 120) : QColor(Qt::white));
-      pen.setWidth(selected ? 2 : 1);
+      QPen pen(selected ? QColor(255, 220, 120) : (top ? QColor(210, 225, 255) : QColor(Qt::white)));
+      pen.setWidth(selected || top ? 2 : 1);
       pen.setStyle(reported ? Qt::SolidLine : Qt::DashLine);
       painter.setPen(pen);
       painter.drawRect(painted.adjusted(0, 0, -1, -1));
       painter.setPen(Qt::white);
-      painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignTop, computer.name);
+      if (showOwnName) {
+        painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignTop, computer.name);
+      }
       painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignBottom, monitor.name);
       if (disabled) {
         painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Disabled"));
       }
     }
   }
+  paintStackNames(&painter, transform);
 
   if (m_dragIndex >= 0) {
     QPen guidePen(QColor(80, 200, 255));
@@ -688,6 +770,15 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
 
 void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
 {
+  if (event->button() == Qt::RightButton) {
+    setFocus(Qt::MouseFocusReason);
+    m_selected = computerAt(event->position(), true);
+    m_dragIndex = -1;
+    syncOriginFields();
+    update();
+    showStackMenu(event->globalPosition().toPoint());
+    return;
+  }
   if (event->button() != Qt::LeftButton) {
     return;
   }
@@ -697,6 +788,7 @@ void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
   m_dragLast = event->position();
   m_guides.clear();
   if (m_dragIndex >= 0) {
+    m_fanGroup = -1;
     m_freeX = m_layout.at(m_dragIndex).originX;
     m_freeY = m_layout.at(m_dragIndex).originY;
   }
@@ -707,6 +799,7 @@ void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
 void MonitorLayoutWidget::mouseMoveEvent(QMouseEvent *event)
 {
   if (m_dragIndex < 0 || m_dragIndex >= m_layout.size()) {
+    updateFan(event->position());
     return;
   }
   const auto transform = viewTransform();
@@ -774,4 +867,331 @@ bool MonitorLayoutWidget::eventFilter(QObject *watched, QEvent *event)
     }
   }
   return QWidget::eventFilter(watched, event);
+}
+
+void MonitorLayoutWidget::leaveEvent(QEvent *event)
+{
+  QWidget::leaveEvent(event);
+  if (m_fanGroup >= 0) {
+    m_fanGroup = -1;
+    update();
+  }
+}
+
+QList<int> MonitorLayoutWidget::overlapGroup(int index) const
+{
+  QList<int> group;
+  if (index < 0 || index >= m_layout.size()) {
+    return group;
+  }
+  QList<int> pending{index};
+  while (!pending.isEmpty()) {
+    const int current = pending.takeLast();
+    if (group.contains(current)) {
+      continue;
+    }
+    group.append(current);
+    for (int other = 0; other < m_layout.size(); ++other) {
+      if (group.contains(other) || pending.contains(other)) {
+        continue;
+      }
+      if (computersOverlap(m_layout.at(current), m_layout.at(other))) {
+        pending.append(other);
+      }
+    }
+  }
+  return group;
+}
+
+QList<int> MonitorLayoutWidget::stackOrder(const QList<int> &group) const
+{
+  QList<int> order = group;
+  std::sort(order.begin(), order.end(), [&](int left, int right) {
+    if (m_layout.at(left).z != m_layout.at(right).z) {
+      return m_layout.at(left).z > m_layout.at(right).z;
+    }
+    return left > right;
+  });
+  return order;
+}
+
+QList<int> MonitorLayoutWidget::paintOrder() const
+{
+  QList<int> order;
+  order.reserve(m_layout.size());
+  for (int index = 0; index < m_layout.size(); ++index) {
+    order.append(index);
+  }
+  std::sort(order.begin(), order.end(), [&](int left, int right) {
+    if (m_layout.at(left).z != m_layout.at(right).z) {
+      return m_layout.at(left).z < m_layout.at(right).z;
+    }
+    return left < right;
+  });
+  return order;
+}
+
+bool MonitorLayoutWidget::fullyCovered(int index) const
+{
+  if (index < 0 || index >= m_layout.size()) {
+    return false;
+  }
+  const auto &computer = m_layout.at(index);
+  if (computer.monitors.isEmpty()) {
+    return false;
+  }
+  for (const auto &monitor : computer.monitors) {
+    const auto inner = monitorGlobal(computer, monitor);
+    bool contained = false;
+    for (int other = 0; other < m_layout.size(); ++other) {
+      if (other == index) {
+        continue;
+      }
+      const bool above = m_layout.at(other).z > computer.z || (m_layout.at(other).z == computer.z && other > index);
+      if (!above) {
+        continue;
+      }
+      for (const auto &cover : m_layout.at(other).monitors) {
+        if (areaContains(monitorGlobal(m_layout.at(other), cover), inner)) {
+          contained = true;
+          break;
+        }
+      }
+      if (contained) {
+        break;
+      }
+    }
+    if (!contained) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void MonitorLayoutWidget::raiseIfOverlapping(int index)
+{
+  if (index < 0 || index >= m_layout.size()) {
+    return;
+  }
+  int maxBelow = std::numeric_limits<int>::min();
+  bool overlaps = false;
+  for (int other = 0; other < m_layout.size(); ++other) {
+    if (other == index) {
+      continue;
+    }
+    if (!computersOverlap(m_layout.at(index), m_layout.at(other))) {
+      continue;
+    }
+    overlaps = true;
+    maxBelow = std::max(maxBelow, m_layout.at(other).z);
+  }
+  if (overlaps && m_layout.at(index).z <= maxBelow && maxBelow < std::numeric_limits<int>::max()) {
+    m_layout[index].z = maxBelow + 1;
+  }
+}
+
+void MonitorLayoutWidget::restack(StackMove move)
+{
+  if (m_selected < 0 || m_selected >= m_layout.size()) {
+    return;
+  }
+  const auto group = overlapGroup(m_selected);
+  if (group.size() < 2) {
+    return;
+  }
+  QList<int> bottomFirst = group;
+  std::sort(bottomFirst.begin(), bottomFirst.end(), [&](int left, int right) {
+    if (m_layout.at(left).z != m_layout.at(right).z) {
+      return m_layout.at(left).z < m_layout.at(right).z;
+    }
+    return left < right;
+  });
+  const int pos = bottomFirst.indexOf(m_selected);
+  if (pos < 0) {
+    return;
+  }
+  switch (move) {
+  case StackMove::Front:
+    bottomFirst.removeAt(pos);
+    bottomFirst.append(m_selected);
+    break;
+  case StackMove::Back:
+    bottomFirst.removeAt(pos);
+    bottomFirst.prepend(m_selected);
+    break;
+  case StackMove::Up:
+    if (pos + 1 >= bottomFirst.size()) {
+      return;
+    }
+    bottomFirst.swapItemsAt(pos, pos + 1);
+    break;
+  case StackMove::Down:
+    if (pos == 0) {
+      return;
+    }
+    bottomFirst.swapItemsAt(pos, pos - 1);
+    break;
+  }
+  for (int place = 0; place < bottomFirst.size(); ++place) {
+    m_layout[bottomFirst.at(place)].z = place;
+  }
+  store();
+  updateStackButtons();
+  update();
+}
+
+void MonitorLayoutWidget::updateStackButtons()
+{
+  if (m_stackFront == nullptr) {
+    return;
+  }
+  bool front = false;
+  bool up = false;
+  bool down = false;
+  bool back = false;
+  if (m_selected >= 0 && m_selected < m_layout.size()) {
+    const auto group = overlapGroup(m_selected);
+    if (group.size() > 1) {
+      const auto order = stackOrder(group);
+      const int pos = order.indexOf(m_selected);
+      front = pos > 0;
+      up = pos > 0;
+      down = pos >= 0 && pos + 1 < order.size();
+      back = down;
+    }
+  }
+  m_stackFront->setEnabled(front);
+  m_stackUp->setEnabled(up);
+  m_stackDown->setEnabled(down);
+  m_stackBack->setEnabled(back);
+}
+
+void MonitorLayoutWidget::showStackMenu(const QPoint &globalPos)
+{
+  QMenu menu(this);
+  auto *front = menu.addAction(tr("Bring to front"));
+  auto *up = menu.addAction(tr("Move up one"));
+  auto *down = menu.addAction(tr("Move down one"));
+  auto *back = menu.addAction(tr("Send to back"));
+  front->setEnabled(m_stackFront->isEnabled());
+  up->setEnabled(m_stackUp->isEnabled());
+  down->setEnabled(m_stackDown->isEnabled());
+  back->setEnabled(m_stackBack->isEnabled());
+  const auto *chosen = menu.exec(globalPos);
+  if (chosen == front) {
+    restack(StackMove::Front);
+  } else if (chosen == up) {
+    restack(StackMove::Up);
+  } else if (chosen == down) {
+    restack(StackMove::Down);
+  } else if (chosen == back) {
+    restack(StackMove::Back);
+  }
+}
+
+void MonitorLayoutWidget::updateFan(const QPointF &widgetPoint)
+{
+  int next = -1;
+  const int hovered = computerAt(widgetPoint, true);
+  if (hovered >= 0) {
+    const auto group = overlapGroup(hovered);
+    for (const int member : group) {
+      if (fullyCovered(member)) {
+        next = stackOrder(group).constFirst();
+        break;
+      }
+    }
+  }
+  if (next == m_fanGroup) {
+    return;
+  }
+  m_fanGroup = next;
+  update();
+}
+
+QPoint MonitorLayoutWidget::fanOffset(int index) const
+{
+  if (m_fanGroup < 0 || index < 0 || index >= m_layout.size()) {
+    return {};
+  }
+  const auto group = overlapGroup(m_fanGroup);
+  if (!group.contains(index)) {
+    return {};
+  }
+  const auto order = stackOrder(group);
+  const int rank = order.indexOf(index);
+  if (rank <= 0) {
+    return {};
+  }
+  return {rank * 28, rank * 18};
+}
+
+void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &transform)
+{
+  m_nameChips.clear();
+  if (m_fanGroup >= 0 || painter == nullptr) {
+    return;
+  }
+  const QFont saved = painter->font();
+  QSet<int> seen;
+  for (int index = 0; index < m_layout.size(); ++index) {
+    if (seen.contains(index)) {
+      continue;
+    }
+    const auto group = overlapGroup(index);
+    for (const int member : group) {
+      seen.insert(member);
+    }
+    if (group.size() < 2) {
+      continue;
+    }
+    const auto order = stackOrder(group);
+    const int top = order.constFirst();
+    const LayoutMonitor *best = nullptr;
+    int bestArea = 0;
+    for (const auto &monitor : m_layout.at(top).monitors) {
+      const int area = monitor.width * monitor.height;
+      if (best == nullptr || area > bestArea) {
+        best = &monitor;
+        bestArea = area;
+      }
+    }
+    if (best == nullptr) {
+      continue;
+    }
+    const auto global = monitorGlobal(m_layout.at(top), *best);
+    const QRect painted(
+        static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)),
+        static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)),
+        std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
+        std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
+    );
+    int barHeight = 16;
+    if (order.size() * barHeight > painted.height() - 6) {
+      barHeight = std::max(11, (painted.height() - 6) / std::max(1, static_cast<int>(order.size())));
+    }
+    QFont font = saved;
+    font.setPixelSize(std::max(9, barHeight - 4));
+    for (int place = 0; place < order.size(); ++place) {
+      const int member = order.at(place);
+      const QRect bar(
+          painted.left() + 4, painted.top() + 4 + place * barHeight, std::max(12, painted.width() - 8), barHeight - 2
+      );
+      if (!painted.contains(bar.center())) {
+        break;
+      }
+      const bool lead = place == 0;
+      painter->fillRect(bar, lead ? QColor(255, 255, 255, 214) : QColor(255, 255, 255, 150));
+      QFont rowFont = font;
+      rowFont.setBold(lead);
+      painter->setFont(rowFont);
+      painter->setPen(lead ? QColor(20, 40, 80) : QColor(70, 70, 70));
+      painter->drawText(
+          bar.adjusted(4, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
+          QStringLiteral("%1  %2").arg(place + 1).arg(m_layout.at(member).name)
+      );
+      m_nameChips.append(NameChip{member, bar});
+    }
+  }
+  painter->setFont(saved);
 }

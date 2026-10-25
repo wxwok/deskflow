@@ -18,8 +18,10 @@ private Q_SLOTS:
   void travelMapping();
   void configRoundTrip();
   void snapAdjacencyAndAlignment();
-  void snapRejectsOverlap();
+  void snapAllowsOverlap();
   void switchEdgeSegments();
+  void stackTopReceivesTheOverlap();
+  void layoutZOrderRoundTrip();
   void disabledComputerIsNotASwitchTarget();
   void unknownOrDisabledSwitchIsSkipped();
 

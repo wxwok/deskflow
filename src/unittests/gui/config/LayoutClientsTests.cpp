@@ -296,6 +296,145 @@ void LayoutClientsTests::movingOneComputerEnablesSave()
   Settings::setValue(Settings::Server::ExternalConfig, false);
 }
 
+void LayoutClientsTests::stackingOrderAndSave()
+{
+  Settings::setValue(Settings::Core::ComputerName, QStringLiteral("work"));
+  Settings::setValue(Settings::Server::ExternalConfig, false);
+
+  ServerConfig apart;
+  apart.setUseMonitorLayout(true);
+  apart.setMonitorLayout(twoComputerLayout());
+  apart.addClient(QStringLiteral("sp7"));
+  {
+    ServerConfigDialog dialog(nullptr, apart);
+    auto *layout = dialog.findChild<MonitorLayoutWidget *>();
+    auto *tabs = dialog.findChild<QTabWidget *>();
+    auto *front = dialog.findChild<QPushButton *>(QStringLiteral("stack-front"));
+    QVERIFY(layout != nullptr);
+    QVERIFY(tabs != nullptr);
+    QVERIFY(front != nullptr);
+    tabs->setCurrentWidget(layout);
+    dialog.resize(1200, 900);
+    dialog.show();
+    QApplication::processEvents();
+    const QPoint sp7 = layout->placedComputerCenter(QStringLiteral("sp7"));
+    QVERIFY(layout->rect().contains(sp7));
+    QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, sp7);
+    QVERIFY(!front->isEnabled());
+    QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("stack-back"))->isEnabled());
+  }
+
+  LayoutComputer work;
+  work.name = QStringLiteral("work");
+  work.z = 0;
+  work.monitors.append({QStringLiteral("work"), 0, 0, 800, 600});
+  LayoutComputer sp7;
+  sp7.name = QStringLiteral("sp7");
+  sp7.z = 1;
+  sp7.monitors.append({QStringLiteral("sp7"), 0, 0, 800, 600});
+  ServerConfig stacked;
+  stacked.setUseMonitorLayout(true);
+  stacked.setMonitorLayout({work, sp7});
+  stacked.addClient(QStringLiteral("sp7"));
+  const auto before = stacked.monitorLayout();
+  {
+    ServerConfigDialog dialog(nullptr, stacked);
+    auto *layout = dialog.findChild<MonitorLayoutWidget *>();
+    auto *tabs = dialog.findChild<QTabWidget *>();
+    auto *front = dialog.findChild<QPushButton *>(QStringLiteral("stack-front"));
+    auto *back = dialog.findChild<QPushButton *>(QStringLiteral("stack-back"));
+    auto *save = saveButton(&dialog);
+    QVERIFY(layout != nullptr);
+    QVERIFY(front != nullptr);
+    QVERIFY(back != nullptr);
+    QVERIFY(save != nullptr);
+    tabs->setCurrentWidget(layout);
+    dialog.resize(1200, 900);
+    dialog.show();
+    QApplication::processEvents();
+    QVERIFY(!save->isEnabled());
+    const QPoint center = layout->placedComputerCenter(QStringLiteral("sp7"));
+    QVERIFY(layout->rect().contains(center));
+    QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, center);
+    QApplication::processEvents();
+    QVERIFY(front->isEnabled() == false);
+    QVERIFY(back->isEnabled());
+    QTest::mouseClick(back, Qt::LeftButton);
+    QApplication::processEvents();
+    int sp7Z = -1;
+    int workZ = -1;
+    for (const auto &computer : layout->layout()) {
+      if (computer.name == QStringLiteral("sp7")) {
+        sp7Z = computer.z;
+      }
+      if (computer.name == QStringLiteral("work")) {
+        workZ = computer.z;
+      }
+    }
+    QVERIFY(sp7Z < workZ);
+    QVERIFY(save->isEnabled());
+    QCOMPARE(stacked.monitorLayout(), before);
+    QTest::mouseClick(save, Qt::LeftButton);
+    QVERIFY(stacked.monitorLayout() != before);
+  }
+
+  const auto path = QStringLiteral("%1/stack-server.conf").arg(m_settingsPath);
+  const auto original = QStringLiteral(
+      "section: links\nend\n\nsection: layout\n"
+      "\twork:\n\t\torigin = 0, 0\n\t\tz = 0\n\t\tmonitor = work, 0, 0, 800, 600\n"
+      "\tsp7:\n\t\torigin = 0, 0\n\t\tz = 2\n\t\tmonitor = sp7, 0, 0, 800, 600\n"
+      "end\n"
+  );
+  QFile file(path);
+  QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+  QCOMPARE(file.write(original.toUtf8()), static_cast<qint64>(original.toUtf8().size()));
+  file.close();
+  Settings::setValue(Settings::Server::ExternalConfig, true);
+  Settings::setValue(Settings::Server::ExternalConfigFile, path);
+  ServerConfig external;
+  external.addClient(QStringLiteral("sp7"));
+  const auto internalSnapshot = external.monitorLayout();
+  {
+    ServerConfigDialog dialog(nullptr, external);
+    auto *layout = dialog.findChild<MonitorLayoutWidget *>();
+    auto *tabs = dialog.findChild<QTabWidget *>();
+    auto *back = dialog.findChild<QPushButton *>(QStringLiteral("stack-back"));
+    auto *save = saveButton(&dialog);
+    QVERIFY(layout != nullptr);
+    QVERIFY(back != nullptr);
+    tabs->setCurrentWidget(layout);
+    dialog.resize(1200, 900);
+    dialog.show();
+    QApplication::processEvents();
+    QVERIFY(!save->isEnabled());
+    const QPoint center = layout->placedComputerCenter(QStringLiteral("sp7"));
+    QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, center);
+    QVERIFY(back->isEnabled());
+    QTest::mouseClick(back, Qt::LeftButton);
+    QVERIFY(layout->hasPendingLayoutWrite());
+    QVERIFY(save->isEnabled());
+    QFile untouched(path);
+    QVERIFY(untouched.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(untouched.readAll()), original);
+    untouched.close();
+    QCOMPARE(external.monitorLayout(), internalSnapshot);
+    QTest::mouseClick(save, Qt::LeftButton);
+    QVERIFY(!layout->hasPendingLayoutWrite());
+  }
+  QFile written(path);
+  QVERIFY(written.open(QIODevice::ReadOnly));
+  const auto text = QString::fromUtf8(written.readAll());
+  written.close();
+  QCOMPARE(text.count(QStringLiteral("section: layout")), 1);
+  QVERIFY(text.contains(QStringLiteral("section: links")));
+  QVERIFY(text.contains(QStringLiteral("z = 0")));
+  QVERIFY(text.contains(QStringLiteral("z = 1")));
+  QVERIFY(!text.contains(QStringLiteral("z = 2")));
+  ServerConfig stillInternal;
+  QCOMPARE(stillInternal.monitorLayout(), internalSnapshot);
+  Settings::setValue(Settings::Server::ExternalConfig, false);
+}
+
 void LayoutClientsTests::renderPreview()
 {
   const auto directory = qEnvironmentVariable("DESKFLOW_LAYOUT_PREVIEW");

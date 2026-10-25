@@ -19,6 +19,7 @@ private Q_SLOTS:
   void externalAddKeepsOneLayout();
   void hotkeyTargetsFollowTheComputerTable();
   void movingOneComputerEnablesSave();
+  void stackingOrderAndSave();
   void renderPreview();
 
 private:

@@ -61,6 +61,7 @@ void writeLayoutArray(QSettings &store, bool useMonitorLayout, const QList<Layou
     store.setValue(QStringLiteral("name"), computer.name);
     store.setValue(QStringLiteral("originX"), computer.originX);
     store.setValue(QStringLiteral("originY"), computer.originY);
+    store.setValue(QStringLiteral("z"), computer.z);
     store.beginWriteArray(QStringLiteral("monitors"));
     for (int monitorIndex = 0; monitorIndex < computer.monitors.size(); ++monitorIndex) {
       store.setArrayIndex(monitorIndex);
@@ -85,6 +86,7 @@ QStringList layoutSectionLines(const QList<LayoutComputer> &layout)
   for (const auto &computer : layout) {
     lines.append(QStringLiteral("\t%1:").arg(computer.name));
     lines.append(QStringLiteral("\t\torigin = %1, %2").arg(computer.originX).arg(computer.originY));
+    lines.append(QStringLiteral("\t\tz = %1").arg(computer.z));
     for (const auto &monitor : computer.monitors) {
       lines.append(QStringLiteral("\t\tmonitor = %1, %2, %3, %4, %5")
                        .arg(monitor.name)
@@ -334,6 +336,11 @@ QList<LayoutComputer> parseLayoutSection(const QString &configText)
       if (parts.size() == 2 && parseIntField(parts.at(0), originX) && parseIntField(parts.at(1), originY)) {
         current.originX = originX;
         current.originY = originY;
+      }
+    } else if (key == QStringLiteral("z")) {
+      int z = 0;
+      if (parseIntField(value, z)) {
+        current.z = z;
       }
     } else if (key == QStringLiteral("monitor")) {
       const auto parts = value.split(QLatin1Char(','));

@@ -17,9 +17,12 @@
 /*!
 A computer's monitors stay in the arrangement the operating system
 reports (local coordinates). \c originX/Y is added to those coordinates
-to place the whole group. Switching happens only where a monitor edge
-is not continued by another monitor of the same computer and does
-overlap a monitor of a different computer.
+to place the whole group. \c z is the stack order: a higher value is in
+front. Missing or equal values keep file order, with a later computer
+in front. Where monitors overlap, the front computer receives the
+pointer and the ones underneath do not. Switching also happens where a
+monitor edge is not continued by another monitor of the same computer
+and does overlap a monitor of a different computer.
 
 An empty layout leaves the legacy neighbour links in charge.
 */
@@ -34,12 +37,14 @@ public:
     std::vector<deskflow::MonitorRect> monitors;
     //! Disabled computers keep their placement, but their edges are not switch targets.
     bool enabled = true;
+    //! Higher values are in front. Equal values keep insertion order, later in front.
+    int32_t z = 0;
   };
 
   void clear();
   void setComputer(
       const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
-      bool enabled = true
+      bool enabled = true, int32_t z = 0
   );
   bool enabled() const;
   bool contains(const std::string &name) const;
@@ -71,6 +76,13 @@ public:
       const std::string &computer, int32_t fromX, int32_t fromY, int32_t toX, int32_t toY, int32_t &clampX,
       int32_t &clampY
   ) const;
+
+  //! Another computer that should receive this point because it is stacked above \p computer.
+  /*!
+  \p x and \p y are local to \p computer. Empty when \p computer is already the front
+  computer at that point, or when the point is on no other computer.
+  */
+  std::optional<deskflow::MonitorCrossing> stackTarget(const std::string &computer, int32_t x, int32_t y) const;
 
   //! Pull \p x,\p y inside \p computer. Returns false if the computer has no monitors.
   bool clampToComputer(const std::string &computer, int32_t &x, int32_t &y) const;

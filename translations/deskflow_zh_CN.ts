@@ -763,8 +763,8 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <translation>所选计算机在布局中的精确原点，单位为像素。</translation>
     </message>
     <message>
-        <source>Drag a computer so its monitors touch another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Leave this off to keep the grid links.</source>
-        <translation>拖动一台计算机，使其显示器与另一台计算机相接。相距约 12 像素的边缘会吸附并对齐；按住 Alt 或 Shift 可关闭吸附。方向键每次移动 1 像素，按住 Shift 为 10 像素；按住 Alt 则移动时不吸附。服务器保持不动。橙色线条是会切换指针的边缘。关闭此选项则继续使用网格链接。</translation>
+        <source>Drag a computer so its monitors touch or overlap another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. A computer you drop on top of another comes to the front. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Where screens overlap, only the front one receives the pointer; the ones underneath are paused there and stay in the layout. Leave this off to keep the grid links.</source>
+        <translation>拖动一台计算机，使其显示器与另一台相接或重叠。相距约 12 像素的边缘会吸附并对齐；按住 Alt 或 Shift 可关闭吸附。拖到另一台上松手后，它会到最前面。方向键每次移动 1 像素，按住 Shift 为 10 像素；按住 Alt 则移动时不吸附。服务器保持不动。橙色线条是会切换指针的边缘。屏幕重叠处只有最前面的一台接收指针，下面的在该处暂停，但仍留在布局里。关闭此选项则继续使用网格链接。</translation>
     </message>
     <message>
         <source>Clients not in the layout</source>
@@ -837,6 +837,26 @@ Additionally, check you are able to %1 the server config file: %2</source>
     <message>
         <source>Disabled</source>
         <translation>已禁用</translation>
+    </message>
+    <message>
+        <source>Bring to front</source>
+        <translation>置顶</translation>
+    </message>
+    <message>
+        <source>Move up one</source>
+        <translation>上移一层</translation>
+    </message>
+    <message>
+        <source>Move down one</source>
+        <translation>下移一层</translation>
+    </message>
+    <message>
+        <source>Send to back</source>
+        <translation>置底</translation>
+    </message>
+    <message>
+        <source>Reorder computers that overlap. The front screen receives the pointer; screens underneath are paused there, not disabled. These stay off when the selection does not overlap another computer.</source>
+        <translation>调整互相重叠的计算机的顺序。最前面的屏幕接收指针，下面的在该处暂停，这不是禁用。所选计算机没有与其他计算机重叠时，这些按钮保持灰色。</translation>
     </message>
 </context>
 <context>

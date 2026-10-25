@@ -351,6 +351,8 @@ public:
     int32_t originX = 0;
     int32_t originY = 0;
     std::vector<deskflow::MonitorRect> monitors;
+    //! Higher values are drawn and hit-tested in front. Omitted in old files, which means 0.
+    int32_t z = 0;
 
     bool operator==(const MonitorPlacement &) const = default;
   };
@@ -359,7 +361,8 @@ public:
 
   //! Replace one computer in the monitor layout. Empty monitors removes it.
   void setMonitorPlacement(
-      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+      int32_t z = 0
   );
 
   //! Drop the monitor layout so neighbour links control pointer switching.

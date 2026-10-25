@@ -10,7 +10,9 @@
 #include "gui/config/LayoutClients.h"
 #include "gui/config/ServerConfig.h"
 
+#include <QList>
 #include <QPoint>
+#include <QRect>
 #include <QSet>
 #include <QWidget>
 
@@ -19,6 +21,7 @@
 
 class QCheckBox;
 class QLabel;
+class QPainter;
 class QPushButton;
 class QSpinBox;
 class QVBoxLayout;
@@ -62,6 +65,7 @@ protected:
   void mouseMoveEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
   void keyPressEvent(QKeyEvent *event) override;
+  void leaveEvent(QEvent *event) override;
   bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -89,6 +93,24 @@ private:
   void addDiscovered(const QString &name);
   void toggleParticipation();
   QString participationError(deskflow::LayoutWriteError error) const;
+  enum class StackMove
+  {
+    Front,
+    Up,
+    Down,
+    Back
+  };
+  QList<int> overlapGroup(int index) const;
+  QList<int> stackOrder(const QList<int> &group) const;
+  QList<int> paintOrder() const;
+  bool fullyCovered(int index) const;
+  void raiseIfOverlapping(int index);
+  void restack(StackMove move);
+  void updateStackButtons();
+  void showStackMenu(const QPoint &globalPos);
+  void updateFan(const QPointF &widgetPoint);
+  QPoint fanOffset(int index) const;
+  void paintStackNames(QPainter *painter, const Transform &transform);
   bool isExternal() const;
   std::vector<deskflow::SnapRect> rectsFor(int index, int originX, int originY) const;
   QPointF mapLayout(const Transform &transform, int32_t x, int32_t y) const;
@@ -107,7 +129,19 @@ private:
   QWidget *m_discoveryHost = nullptr;
   QVBoxLayout *m_discoveryLayout = nullptr;
   QPushButton *m_participation = nullptr;
+  QPushButton *m_stackFront = nullptr;
+  QPushButton *m_stackUp = nullptr;
+  QPushButton *m_stackDown = nullptr;
+  QPushButton *m_stackBack = nullptr;
   QLabel *m_originLabel = nullptr;
+  struct NameChip
+  {
+    int index = -1;
+    QRect rect;
+  };
+  QList<NameChip> m_nameChips;
+  //! A computer in the stack currently fanned open, or -1.
+  int m_fanGroup = -1;
   bool m_reloading = false;
   QSpinBox *m_originX = nullptr;
   QSpinBox *m_originY = nullptr;

@@ -120,6 +120,7 @@ void ServerConfig::commit()
     settings().setValue("name", computer.name);
     settings().setValue("originX", computer.originX);
     settings().setValue("originY", computer.originY);
+    settings().setValue("z", computer.z);
     settings().beginWriteArray("monitors");
     for (int monitorIndex = 0; monitorIndex < computer.monitors.size(); ++monitorIndex) {
       settings().setArrayIndex(monitorIndex);
@@ -189,6 +190,7 @@ void ServerConfig::recall()
     computer.name = settings().value("name").toString();
     computer.originX = settings().value("originX").toInt();
     computer.originY = settings().value("originY").toInt();
+    computer.z = settings().value("z").toInt();
     const int numMonitors = settings().beginReadArray("monitors");
     for (int monitorIndex = 0; monitorIndex < numMonitors; ++monitorIndex) {
       settings().setArrayIndex(monitorIndex);
@@ -257,6 +259,7 @@ QTextStream &operator<<(QTextStream &outStream, const ServerConfig &config)
     for (const auto &computer : config.monitorLayout()) {
       outStream << "\t" << computer.name << ":" << Qt::endl;
       outStream << "\t\torigin = " << computer.originX << ", " << computer.originY << Qt::endl;
+      outStream << "\t\tz = " << computer.z << Qt::endl;
       for (const auto &monitor : computer.monitors) {
         outStream << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width
                   << ", " << monitor.height << Qt::endl;
