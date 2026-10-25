@@ -22,6 +22,9 @@ private Q_SLOTS:
   void staleDeactivate_doesNotDropANewerGrab();
   void rejectedBarriersWhileHeld_waitForReleaseThenRetryOnce();
   void releasePosition_rejectsTheZoneEdge();
+  void nudgeRelease_bottomEdgeMovesInward();
+  void nudgeRelease_leftEdgeMovesInward();
+  void nudgeRelease_ignoresOtherZones();
   void rapidBounce_releasesTheNewGrabAndDropsTheStaleRelease();
   void rapidBounce_lateStopsDoNotRetireTheNewGrab();
   void deviceStopsWithoutDeactivate_keepTheGrab();

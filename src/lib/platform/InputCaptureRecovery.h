@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 
@@ -377,6 +379,71 @@ private:
 inline bool releasePositionInsideZone(double x, double y, int left, int top, int right, int bottom)
 {
   return x > left && y > top && x < right && y < bottom;
+}
+
+/// One portal zone edge that has a switch barrier (coordinates inclusive).
+struct ReleaseSwitchEdge
+{
+  enum class Side
+  {
+    Left,
+    Right,
+    Top,
+    Bottom
+  };
+
+  Side side = Side::Left;
+  int zoneLeft = 0;
+  int zoneTop = 0;
+  int zoneRight = 0;
+  int zoneBottom = 0;
+};
+
+/// Push a ReleaseAt point away from switch barriers inside its zone.
+/*!
+Mutter can re-activate InputCapture when the warp lands only a few pixels
+inside a barrier — observed on concave bottom edges (portrait monitor above a
+stacked neighbour) even ~60px in, while a ~4px left-edge return held. Clamp
+each matching edge by up to margin (or half the zone, whichever is smaller).
+*/
+inline void
+nudgeReleaseAwayFromSwitchEdges(double &x, double &y, const ReleaseSwitchEdge *edges, std::size_t count, int margin)
+{
+  if (edges == nullptr || count == 0 || margin < 1) {
+    return;
+  }
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto &edge = edges[i];
+    if (x < edge.zoneLeft || x > edge.zoneRight || y < edge.zoneTop || y > edge.zoneBottom) {
+      continue;
+    }
+    const double halfW = std::max(0.0, (edge.zoneRight - edge.zoneLeft) / 2.0);
+    const double halfH = std::max(0.0, (edge.zoneBottom - edge.zoneTop) / 2.0);
+    const double insetX = std::min(static_cast<double>(margin), halfW);
+    const double insetY = std::min(static_cast<double>(margin), halfH);
+    switch (edge.side) {
+    case ReleaseSwitchEdge::Side::Left:
+      if (x < edge.zoneLeft + insetX) {
+        x = edge.zoneLeft + insetX;
+      }
+      break;
+    case ReleaseSwitchEdge::Side::Right:
+      if (x > edge.zoneRight - insetX) {
+        x = edge.zoneRight - insetX;
+      }
+      break;
+    case ReleaseSwitchEdge::Side::Top:
+      if (y < edge.zoneTop + insetY) {
+        y = edge.zoneTop + insetY;
+      }
+      break;
+    case ReleaseSwitchEdge::Side::Bottom:
+      if (y > edge.zoneBottom - insetY) {
+        y = edge.zoneBottom - insetY;
+      }
+      break;
+    }
+  }
 }
 
 } // namespace deskflow

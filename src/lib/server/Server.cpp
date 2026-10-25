@@ -826,19 +826,6 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     return;
   }
 
-  const int32_t along = (arrival == Left || arrival == Right) ? y : x;
-  const int32_t position = (arrival == Left || arrival == Right) ? x : y;
-  bool onSwitchEdge = false;
-  for (const auto &edge : m_monitorLayout.switchEdges(getName(dst))) {
-    if (edge.side == arrival && edge.position == position && edge.contains(along)) {
-      onSwitchEdge = true;
-      break;
-    }
-  }
-  if (!onSwitchEdge) {
-    return;
-  }
-
   const deskflow::MonitorRect *hit = nullptr;
   for (const auto &monitor : dst->getMonitors()) {
     if (monitor.contains(x, y)) {
@@ -850,18 +837,64 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     return;
   }
 
+  // Portal InputCapture re-grabs when ReleaseAt lands near a switch barrier.
+  // crossAt already insets by overshoot, so the point is usually no longer
+  // exactly on edge.position — match a near-edge band, then push well inside.
+  // A one-pixel jump zone is nowhere near enough for concave bottoms (e.g.
+  // work output-3 above a stacked neighbour): ~60px still bounced in testing.
+  constexpr int32_t kPortalEdgeTolerance = 512;
+  constexpr int32_t kPortalMinInset = 128;
+  const int32_t along = (arrival == Left || arrival == Right) ? y : x;
+  const int32_t position = (arrival == Left || arrival == Right) ? x : y;
+  bool onSwitchEdge = false;
+  for (const auto &edge : m_monitorLayout.switchEdges(getName(dst))) {
+    if (edge.side != arrival || !edge.contains(along)) {
+      continue;
+    }
+    const int32_t dist = std::abs(edge.position - position);
+    bool insideFromEdge = false;
+    switch (arrival) {
+    case Left:
+      insideFromEdge = position >= edge.position;
+      break;
+    case Right:
+      insideFromEdge = position <= edge.position;
+      break;
+    case Top:
+      insideFromEdge = position >= edge.position;
+      break;
+    case Bottom:
+      insideFromEdge = position <= edge.position;
+      break;
+    case NoDirection:
+      break;
+    }
+    if (insideFromEdge && dist <= kPortalEdgeTolerance) {
+      onSwitchEdge = true;
+      break;
+    }
+  }
+  if (!onSwitchEdge) {
+    return;
+  }
+
+  const int32_t halfW = std::max<int32_t>(0, (hit->width - 1) / 2);
+  const int32_t halfH = std::max<int32_t>(0, (hit->height - 1) / 2);
+  const int32_t insetX = std::max({zone, kPortalMinInset, std::min(halfW, hit->width / 4)});
+  const int32_t insetY = std::max({zone, kPortalMinInset, std::min(halfH, hit->height / 4)});
+
   switch (arrival) {
   case Left:
-    x = std::min(hit->right() - 1, x + zone);
+    x = std::min(hit->right() - 1, std::max(x, hit->x + insetX));
     break;
   case Right:
-    x = std::max(hit->x, x - zone);
+    x = std::max(hit->x, std::min(x, hit->right() - 1 - insetX));
     break;
   case Top:
-    y = std::min(hit->bottom() - 1, y + zone);
+    y = std::min(hit->bottom() - 1, std::max(y, hit->y + insetY));
     break;
   case Bottom:
-    y = std::max(hit->y, y - zone);
+    y = std::max(hit->y, std::min(y, hit->bottom() - 1 - insetY));
     break;
   case NoDirection:
     break;

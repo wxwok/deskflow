@@ -9,7 +9,9 @@
 #include "platform/InputCaptureRecovery.h"
 
 using deskflow::InputCaptureRecovery;
+using deskflow::nudgeReleaseAwayFromSwitchEdges;
 using deskflow::releasePositionInsideZone;
+using deskflow::ReleaseSwitchEdge;
 
 void InputCaptureRecoveryTests::disconnectWhileActive_releasesGrabAndDefersBarriers()
 {
@@ -306,6 +308,38 @@ void InputCaptureRecoveryTests::releasePosition_rejectsTheZoneEdge()
   QVERIFY(!releasePositionInsideZone(100, 50, 0, 0, 100, 100));
   QVERIFY(!releasePositionInsideZone(50, 0, 0, 0, 100, 100));
   QVERIFY(!releasePositionInsideZone(50, 100, 0, 0, 100, 100));
+}
+
+void InputCaptureRecoveryTests::nudgeRelease_bottomEdgeMovesInward()
+{
+  // work output-3: 0,0 1080x1920 with a bottom switch barrier (sp7 below).
+  const ReleaseSwitchEdge edge{ReleaseSwitchEdge::Side::Bottom, 0, 0, 1079, 1919};
+  double x = 104.0;
+  double y = 1906.0;
+  nudgeReleaseAwayFromSwitchEdges(x, y, &edge, 1, 128);
+  QCOMPARE(x, 104.0);
+  QCOMPARE(y, 1791.0); // 1919 - 128
+}
+
+void InputCaptureRecoveryTests::nudgeRelease_leftEdgeMovesInward()
+{
+  const ReleaseSwitchEdge edge{ReleaseSwitchEdge::Side::Left, 1080, 0, 4919, 2159};
+  double x = 1084.0;
+  double y = 2143.0;
+  nudgeReleaseAwayFromSwitchEdges(x, y, &edge, 1, 128);
+  QCOMPARE(x, 1208.0); // 1080 + 128
+  QCOMPARE(y, 2143.0);
+}
+
+void InputCaptureRecoveryTests::nudgeRelease_ignoresOtherZones()
+{
+  const ReleaseSwitchEdge edge{ReleaseSwitchEdge::Side::Bottom, 0, 0, 1079, 1919};
+  // Point on output-4, not output-3 — must not move.
+  double x = 1177.0;
+  double y = 3023.0;
+  nudgeReleaseAwayFromSwitchEdges(x, y, &edge, 1, 128);
+  QCOMPARE(x, 1177.0);
+  QCOMPARE(y, 3023.0);
 }
 
 QTEST_MAIN(InputCaptureRecoveryTests)

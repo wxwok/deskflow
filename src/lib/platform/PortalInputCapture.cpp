@@ -707,6 +707,47 @@ PortalInputCapture::mapPortalActivationToComputerPosition(guint barrierId, doubl
   return {x, y};
 }
 
+void PortalInputCapture::nudgeMappedReleaseAwayFromBarriers(double &x, double &y) const
+{
+  // Matches Server::avoidJumpZoneLayout portal inset; half-zone clamp is inside the helper.
+  constexpr int kPortalReleaseMargin = 128;
+  if (m_barrierInfo.empty()) {
+    return;
+  }
+
+  std::vector<deskflow::ReleaseSwitchEdge> edges;
+  edges.reserve(m_barrierInfo.size());
+  for (const auto &info : m_barrierInfo) {
+    deskflow::ReleaseSwitchEdge edge;
+    edge.zoneLeft = info.x;
+    edge.zoneTop = info.y;
+    edge.zoneRight = info.x + static_cast<gint>(info.width) - 1;
+    edge.zoneBottom = info.y + static_cast<gint>(info.height) - 1;
+    using enum BarrierSide;
+    switch (info.side) {
+    case Left:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Left;
+      break;
+    case Right:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Right;
+      break;
+    case Top:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Top;
+      break;
+    case Bottom:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Bottom;
+      break;
+    }
+    edges.push_back(edge);
+  }
+  const double beforeX = x;
+  const double beforeY = y;
+  deskflow::nudgeReleaseAwayFromSwitchEdges(x, y, edges.data(), edges.size(), kPortalReleaseMargin);
+  if (x != beforeX || y != beforeY) {
+    LOG_DEBUG("nudged portal release from %.1f,%.1f to %.1f,%.1f (away from switch barriers)", beforeX, beforeY, x, y);
+  }
+}
+
 std::pair<double, double> PortalInputCapture::mapPortalReleasePosition(double x, double y) const
 {
   std::int32_t computerX;
@@ -729,16 +770,18 @@ std::pair<double, double> PortalInputCapture::mapPortalReleasePosition(double x,
   auto mappedY = static_cast<std::int32_t>(std::lround(y));
 
   // A monitor layout releases inside whichever monitor was entered. Scaling the
-  // computer point into the portal keeps it off the bounding-box edge.
+  // computer point into the portal keeps it off the bounding-box edge. Then
+  // nudge away from switch barriers: ReleaseAt near a concave bottom edge
+  // (e.g. portrait output above a stacked neighbour) re-activates capture.
   if (monitorEdges()) {
-    return {
-        static_cast<double>(
-            scaleCoordinateBetweenRanges(x, computerLeft, computerRight, portalBounds.left, portalBounds.right)
-        ),
-        static_cast<double>(
-            scaleCoordinateBetweenRanges(y, computerTop, computerBottom, portalBounds.top, portalBounds.bottom)
-        )
-    };
+    double mappedPortalX = static_cast<double>(
+        scaleCoordinateBetweenRanges(x, computerLeft, computerRight, portalBounds.left, portalBounds.right)
+    );
+    double mappedPortalY = static_cast<double>(
+        scaleCoordinateBetweenRanges(y, computerTop, computerBottom, portalBounds.top, portalBounds.bottom)
+    );
+    nudgeMappedReleaseAwayFromBarriers(mappedPortalX, mappedPortalY);
+    return {mappedPortalX, mappedPortalY};
   }
 
   if (BarrierInfo releaseBarrier; getClosestReleaseBarrier(

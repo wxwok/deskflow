@@ -189,6 +189,7 @@ private:
       const Bounds &portalBounds, BarrierInfo &barrier
   ) const;
   std::pair<int, int> mapPortalActivationToComputerPosition(guint barrierId, double rawX, double rawY) const;
+  void nudgeMappedReleaseAwayFromBarriers(double &x, double &y) const;
   std::pair<double, double> mapPortalReleasePosition(double x, double y) const;
   void addBarrier(guint id, BarrierSide side, gint zoneX, gint zoneY, guint zoneWidth, guint zoneHeight);
   void addBarrierSegment(
