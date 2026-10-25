@@ -54,6 +54,9 @@ public:
   //! Widget-space center of a placed computer's first monitor. Null when it is not placed.
   QPoint placedComputerCenter(const QString &name) const;
 
+  //! Idle roster row for a stacked computer, in widget coordinates. Invalid when it is not shown.
+  QRect stackRosterChip(const QString &name) const;
+
 Q_SIGNALS:
   void layoutChanged();
   //! The internal monitor layout was committed to the general config and the caller's ServerConfig.
@@ -109,7 +112,8 @@ private:
   void updateStackButtons();
   void showStackMenu(const QPoint &globalPos);
   void updateFan(const QPointF &widgetPoint);
-  QPoint fanOffset(int index) const;
+  QRect fanCardRect(int index) const;
+  void paintFanCard(QPainter *painter, int index) const;
   void paintStackNames(QPainter *painter, const Transform &transform);
   bool isExternal() const;
   std::vector<deskflow::SnapRect> rectsFor(int index, int originX, int originY) const;
@@ -142,6 +146,8 @@ private:
   QList<NameChip> m_nameChips;
   //! A computer in the stack currently fanned open, or -1.
   int m_fanGroup = -1;
+  //! Widget point that opened the fan. The front card stays under it.
+  QPoint m_fanCursor;
   bool m_reloading = false;
   QSpinBox *m_originX = nullptr;
   QSpinBox *m_originY = nullptr;

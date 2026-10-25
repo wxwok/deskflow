@@ -13,6 +13,7 @@
 #include <QEvent>
 #include <QFile>
 #include <QFont>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -63,6 +64,20 @@ bool computersOverlap(const LayoutComputer &a, const LayoutComputer &b)
     }
   }
   return false;
+}
+
+const LayoutMonitor *largestMonitor(const LayoutComputer &computer)
+{
+  const LayoutMonitor *best = nullptr;
+  int bestArea = -1;
+  for (const auto &monitor : computer.monitors) {
+    const int area = monitor.width * monitor.height;
+    if (best == nullptr || area > bestArea) {
+      best = &monitor;
+      bestArea = area;
+    }
+  }
+  return best;
 }
 
 } // namespace
@@ -557,7 +572,17 @@ MonitorLayoutWidget::Transform MonitorLayoutWidget::viewTransform() const
 int MonitorLayoutWidget::computerAt(const QPointF &widgetPoint, bool includeServer) const
 {
   const auto skip = [&](int index) { return !includeServer && m_layout.at(index).name == m_serverName; };
-  if (m_fanGroup < 0) {
+  if (m_fanGroup >= 0) {
+    const auto order = stackOrder(overlapGroup(m_fanGroup));
+    for (const int index : order) {
+      if (skip(index)) {
+        continue;
+      }
+      if (fanCardRect(index).contains(widgetPoint.toPoint())) {
+        return index;
+      }
+    }
+  } else {
     for (auto chip = m_nameChips.crbegin(); chip != m_nameChips.crend(); ++chip) {
       if (chip->rect.contains(widgetPoint.toPoint()) && !skip(chip->index)) {
         return chip->index;
@@ -567,19 +592,18 @@ int MonitorLayoutWidget::computerAt(const QPointF &widgetPoint, bool includeServ
 
   const auto transform = viewTransform();
   const auto order = paintOrder();
+  const auto fanned = m_fanGroup >= 0 ? overlapGroup(m_fanGroup) : QList<int>{};
   for (int place = order.size() - 1; place >= 0; --place) {
     const int index = order.at(place);
-    if (skip(index)) {
+    if (skip(index) || fanned.contains(index)) {
       continue;
     }
-    const QPoint fan = fanOffset(index);
     const auto &computer = m_layout.at(index);
     for (const auto &monitor : computer.monitors) {
       const auto global = monitorGlobal(computer, monitor);
       const QRectF painted(
-          transform.originX + global.x() * transform.scale + fan.x(),
-          transform.originY + global.y() * transform.scale + fan.y(), global.width() * transform.scale,
-          global.height() * transform.scale
+          transform.originX + global.x() * transform.scale, transform.originY + global.y() * transform.scale,
+          global.width() * transform.scale, global.height() * transform.scale
       );
       if (painted.contains(widgetPoint)) {
         return index;
@@ -695,16 +719,21 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
     }
     const bool reported = m_reported.contains(computer.name);
     const bool selected = index == m_selected;
-    const QPoint fan = fanOffset(index);
-    const bool showOwnName = !stacked || m_fanGroup >= 0 || !fullyCovered(index);
+    const bool fanned = m_fanGroup >= 0 && overlapGroup(m_fanGroup).contains(index);
+    if (fanned) {
+      continue;
+    }
+    const bool showOwnName = !stacked || !fullyCovered(index);
+    const auto *primary = largestMonitor(computer);
     for (const auto &monitor : computer.monitors) {
       const auto global = monitorGlobal(computer, monitor);
       const QRect painted(
-          static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)) + fan.x(),
-          static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)) + fan.y(),
+          static_cast<int>(std::lround(transform.originX + global.x() * transform.scale)),
+          static_cast<int>(std::lround(transform.originY + global.y() * transform.scale)),
           std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
           std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
       );
+      const bool hostsRoster = stacked && top && primary == &monitor;
       if (top) {
         painter.fillRect(painted.translated(4, 4), QColor(0, 0, 0, 50));
       }
@@ -715,10 +744,21 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       painter.setPen(pen);
       painter.drawRect(painted.adjusted(0, 0, -1, -1));
       painter.setPen(Qt::white);
-      if (showOwnName) {
+      if (hostsRoster && !disabled) {
+        painter.save();
+        QFont mark = painter.font();
+        mark.setBold(true);
+        mark.setPixelSize(std::min(64, std::max(22, painted.height() / 6)));
+        painter.setFont(mark);
+        painter.setPen(QColor(255, 255, 255, 235));
+        painter.drawText(painted.adjusted(16, 12, -16, -(painted.height() / 3)), Qt::AlignCenter, computer.name);
+        painter.restore();
+      } else if (showOwnName) {
         painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignTop, computer.name);
       }
-      painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignBottom, monitor.name);
+      if (!hostsRoster) {
+        painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignBottom, monitor.name);
+      }
       if (disabled) {
         painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Disabled"));
       }
@@ -765,6 +805,13 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
         transform, segment.vertical ? segment.position : segment.end, segment.vertical ? segment.end : segment.position
     );
     painter.drawLine(start, end);
+  }
+
+  if (m_fanGroup >= 0) {
+    const auto fanned = stackOrder(overlapGroup(m_fanGroup));
+    for (int rank = fanned.size() - 1; rank >= 0; --rank) {
+      paintFanCard(&painter, fanned.at(rank));
+    }
   }
 }
 
@@ -1105,11 +1152,12 @@ void MonitorLayoutWidget::updateFan(const QPointF &widgetPoint)
   if (next == m_fanGroup) {
     return;
   }
+  m_fanCursor = widgetPoint.toPoint();
   m_fanGroup = next;
   update();
 }
 
-QPoint MonitorLayoutWidget::fanOffset(int index) const
+QRect MonitorLayoutWidget::fanCardRect(int index) const
 {
   if (m_fanGroup < 0 || index < 0 || index >= m_layout.size()) {
     return {};
@@ -1120,10 +1168,137 @@ QPoint MonitorLayoutWidget::fanOffset(int index) const
   }
   const auto order = stackOrder(group);
   const int rank = order.indexOf(index);
-  if (rank <= 0) {
+  const int count = order.size();
+  if (rank < 0 || count < 2) {
     return {};
   }
-  return {rank * 28, rank * 18};
+
+  const int cardW = 232;
+  const int cardH = 148;
+  int minX = 8;
+  int minY = 8;
+  if (m_controls != nullptr) {
+    minY = std::max(minY, m_controls->geometry().bottom() + 6);
+  }
+  const int availW = std::max(cardW, width() - minX - 8);
+  const int availH = std::max(cardH, height() - minY - 8);
+  int stepX = 112;
+  int stepY = 68;
+  if (count > 1) {
+    stepX = std::min(stepX, std::max(48, (availW - cardW) / (count - 1)));
+    stepY = std::min(stepY, std::max(32, (availH - cardH) / (count - 1)));
+  }
+  const int spanX = (count - 1) * stepX;
+  const int spanY = (count - 1) * stepY;
+  QPoint front(m_fanCursor.x() - cardW / 2, m_fanCursor.y() - cardH / 3);
+  const int left = front.x() - spanX;
+  const int top = front.y();
+  const int right = front.x() + cardW;
+  const int bottom = front.y() + cardH + spanY;
+  int shiftX = 0;
+  int shiftY = 0;
+  if (left < minX) {
+    shiftX = minX - left;
+  }
+  if (right + shiftX > minX + availW) {
+    shiftX += (minX + availW) - (right + shiftX);
+  }
+  if (top < minY) {
+    shiftY = minY - top;
+  }
+  if (bottom + shiftY > minY + availH) {
+    shiftY += (minY + availH) - (bottom + shiftY);
+  }
+  front += QPoint(shiftX, shiftY);
+  if (!QRect(front, QSize(cardW, cardH)).contains(m_fanCursor)) {
+    front = QPoint(m_fanCursor.x() - cardW / 2, m_fanCursor.y() - cardH / 3);
+  }
+  return {front + QPoint(-rank * stepX, rank * stepY), QSize(cardW, cardH)};
+}
+
+void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
+{
+  const QRect card = fanCardRect(index);
+  if (painter == nullptr || card.isEmpty() || index < 0 || index >= m_layout.size()) {
+    return;
+  }
+  const auto order = stackOrder(overlapGroup(index));
+  const int rank = order.indexOf(index);
+  if (rank < 0) {
+    return;
+  }
+  const auto &computer = m_layout.at(index);
+  const bool front = rank == 0;
+  const bool selected = index == m_selected;
+  const bool disabled = deskflow::isComputerDisabled(computer.name);
+  const auto *primary = largestMonitor(computer);
+
+  painter->save();
+  painter->setRenderHint(QPainter::Antialiasing, true);
+  painter->setPen(Qt::NoPen);
+  painter->setBrush(QColor(20, 30, 50, 28));
+  painter->drawRoundedRect(card.translated(0, 4), 12, 12);
+  painter->setBrush(front ? QColor(255, 255, 255) : QColor(248, 246, 242));
+  painter->setPen(Qt::NoPen);
+  painter->drawRoundedRect(card, 12, 12);
+  QPen border(selected ? QColor(230, 168, 40) : (front ? QColor(47, 128, 237) : QColor(214, 214, 214)));
+  border.setWidth(selected || front ? 2 : 1);
+  painter->setPen(border);
+  painter->setBrush(Qt::NoBrush);
+  painter->drawRoundedRect(card.adjusted(1, 1, -1, -1), 11, 11);
+
+  const QString badge = QStringLiteral("%1/%2").arg(rank + 1).arg(order.size());
+  QFont badgeFont = painter->font();
+  badgeFont.setPixelSize(11);
+  badgeFont.setBold(true);
+  const QFontMetrics badgeMetrics(badgeFont);
+  const int badgeW = badgeMetrics.horizontalAdvance(badge) + 14;
+  const int badgeH = 18;
+  const QRect badgeRect(card.right() - badgeW - 10, card.top() + 10, badgeW, badgeH);
+  painter->setFont(badgeFont);
+  painter->setPen(Qt::NoPen);
+  painter->setBrush(front ? QColor(47, 128, 237) : QColor(232, 226, 214));
+  painter->drawRoundedRect(badgeRect, badgeH / 2, badgeH / 2);
+  painter->setPen(front ? Qt::white : QColor(90, 78, 60));
+  painter->drawText(badgeRect, Qt::AlignCenter, badge);
+
+  QFont title = painter->font();
+  title.setPixelSize(15);
+  title.setBold(true);
+  painter->setFont(title);
+  painter->setPen(disabled ? QColor(130, 130, 130) : QColor(32, 40, 54));
+  const QRect titleRect(card.left() + 12, card.top() + 8, badgeRect.left() - card.left() - 16, 22);
+  painter->drawText(
+      titleRect, Qt::AlignVCenter | Qt::AlignLeft,
+      QFontMetrics(title).elidedText(computer.name, Qt::ElideRight, titleRect.width())
+  );
+
+  const QRect screen(card.center().x() - 34, card.top() + 44, 68, 44);
+  painter->setPen(QPen(QColor(176, 198, 220), 2));
+  painter->setBrush(QColor(226, 238, 248));
+  painter->drawRoundedRect(screen, 4, 4);
+  painter->setPen(Qt::NoPen);
+  painter->setBrush(QColor(186, 208, 226));
+  painter->drawRoundedRect(QRect(card.center().x() - 12, screen.bottom() + 1, 24, 5), 1, 1);
+  painter->drawRoundedRect(QRect(card.center().x() - 20, screen.bottom() + 6, 40, 4), 1, 1);
+
+  if (primary != nullptr) {
+    QFont resolution = painter->font();
+    resolution.setPixelSize(12);
+    resolution.setBold(false);
+    painter->setFont(resolution);
+    painter->setPen(front ? QColor(47, 128, 237) : QColor(110, 110, 110));
+    const QRect resolutionRect(card.left() + 8, screen.bottom() + 14, card.width() - 16, 18);
+    painter->drawText(
+        resolutionRect, Qt::AlignHCenter | Qt::AlignVCenter,
+        QStringLiteral("%1×%2").arg(primary->width).arg(primary->height)
+    );
+  }
+  if (disabled) {
+    painter->setPen(QColor(120, 120, 120));
+    painter->drawText(card.adjusted(8, 8, -8, -8), Qt::AlignHCenter | Qt::AlignBottom, tr("Disabled"));
+  }
+  painter->restore();
 }
 
 void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &transform)
@@ -1147,15 +1322,7 @@ void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &tr
     }
     const auto order = stackOrder(group);
     const int top = order.constFirst();
-    const LayoutMonitor *best = nullptr;
-    int bestArea = 0;
-    for (const auto &monitor : m_layout.at(top).monitors) {
-      const int area = monitor.width * monitor.height;
-      if (best == nullptr || area > bestArea) {
-        best = &monitor;
-        bestArea = area;
-      }
-    }
+    const auto *best = largestMonitor(m_layout.at(top));
     if (best == nullptr) {
       continue;
     }
@@ -1166,32 +1333,74 @@ void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &tr
         std::max(1, static_cast<int>(std::lround(global.width() * transform.scale))),
         std::max(1, static_cast<int>(std::lround(global.height() * transform.scale)))
     );
-    int barHeight = 16;
-    if (order.size() * barHeight > painted.height() - 6) {
-      barHeight = std::max(11, (painted.height() - 6) / std::max(1, static_cast<int>(order.size())));
+    if (painted.width() < 48 || painted.height() < 28) {
+      continue;
     }
     QFont font = saved;
-    font.setPixelSize(std::max(9, barHeight - 4));
-    for (int place = 0; place < order.size(); ++place) {
+    font.setPixelSize(12);
+    font.setBold(false);
+    const QFontMetrics metrics(font);
+    int textWidth = 0;
+    for (const int member : order) {
+      textWidth = std::max(textWidth, metrics.horizontalAdvance(m_layout.at(member).name));
+    }
+    const int rowHeight = 22;
+    const int rows = std::min(static_cast<int>(order.size()), std::max(1, (painted.height() - 16) / rowHeight));
+    const int cardWidth = std::min(painted.width() - 16, std::max(72, 34 + textWidth));
+    const int cardHeight = rows * rowHeight + 6;
+    const QRect card(painted.left() + 8, painted.bottom() - 8 - cardHeight, cardWidth, cardHeight);
+    if (!painted.contains(card.center())) {
+      continue;
+    }
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(20, 30, 50, 24));
+    painter->drawRoundedRect(card.translated(0, 2), 8, 8);
+    painter->setBrush(QColor(255, 255, 255, 236));
+    painter->setPen(QPen(QColor(226, 226, 230), 1));
+    painter->drawRoundedRect(card, 8, 8);
+    for (int place = 0; place < rows; ++place) {
       const int member = order.at(place);
-      const QRect bar(
-          painted.left() + 4, painted.top() + 4 + place * barHeight, std::max(12, painted.width() - 8), barHeight - 2
-      );
-      if (!painted.contains(bar.center())) {
-        break;
-      }
       const bool lead = place == 0;
-      painter->fillRect(bar, lead ? QColor(255, 255, 255, 214) : QColor(255, 255, 255, 150));
+      const QRect row(card.left() + 3, card.top() + 3 + place * rowHeight, card.width() - 6, rowHeight);
+      if (place > 0) {
+        painter->setPen(QColor(232, 232, 236));
+        painter->drawLine(row.left() + 4, row.top(), row.right() - 4, row.top());
+      }
+      const QRect circle(row.left() + 4, row.top() + (rowHeight - 16) / 2, 16, 16);
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(lead ? QColor(232, 240, 252) : QColor(244, 244, 246));
+      painter->drawEllipse(circle);
+      QFont number = font;
+      number.setPixelSize(10);
+      number.setBold(lead);
+      painter->setFont(number);
+      painter->setPen(lead ? QColor(47, 128, 237) : QColor(150, 150, 150));
+      painter->drawText(circle, Qt::AlignCenter, QString::number(place + 1));
       QFont rowFont = font;
       rowFont.setBold(lead);
       painter->setFont(rowFont);
-      painter->setPen(lead ? QColor(20, 40, 80) : QColor(70, 70, 70));
+      painter->setPen(lead ? QColor(36, 44, 58) : QColor(130, 130, 130));
+      const QRect nameRect(circle.right() + 6, row.top(), row.right() - circle.right() - 10, rowHeight);
       painter->drawText(
-          bar.adjusted(4, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
-          QStringLiteral("%1  %2").arg(place + 1).arg(m_layout.at(member).name)
+          nameRect, Qt::AlignVCenter | Qt::AlignLeft,
+          QFontMetrics(rowFont).elidedText(m_layout.at(member).name, Qt::ElideRight, nameRect.width())
       );
-      m_nameChips.append(NameChip{member, bar});
+      m_nameChips.append(NameChip{member, row});
     }
+    painter->restore();
   }
   painter->setFont(saved);
+}
+
+QRect MonitorLayoutWidget::stackRosterChip(const QString &name) const
+{
+  for (const auto &chip : m_nameChips) {
+    if (chip.index >= 0 && chip.index < m_layout.size() && m_layout.at(chip.index).name == name) {
+      return chip.rect;
+    }
+  }
+  return {};
 }

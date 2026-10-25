@@ -17,6 +17,7 @@
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTest>
@@ -353,6 +354,17 @@ void LayoutClientsTests::stackingOrderAndSave()
     dialog.show();
     QApplication::processEvents();
     QVERIFY(!save->isEnabled());
+    layout->update();
+    QApplication::processEvents();
+    const QRect sp7Chip = layout->stackRosterChip(QStringLiteral("sp7"));
+    const QRect workChip = layout->stackRosterChip(QStringLiteral("work"));
+    QVERIFY(sp7Chip.isValid());
+    QVERIFY(workChip.isValid());
+    QVERIFY(sp7Chip.top() < workChip.top());
+    QVERIFY(layout->rect().contains(workChip.center()));
+    QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, workChip.center());
+    QApplication::processEvents();
+    QVERIFY(front->isEnabled());
     const QPoint center = layout->placedComputerCenter(QStringLiteral("sp7"));
     QVERIFY(layout->rect().contains(center));
     QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, center);
@@ -490,6 +502,48 @@ void LayoutClientsTests::renderPreview()
   const auto fileName =
       qm.isEmpty() ? QStringLiteral("monitor-layout-discovery.png") : QStringLiteral("monitor-layout-discovery-zh.png");
   QVERIFY(image.save(QStringLiteral("%1/%2").arg(directory, fileName)));
+
+  if (!qm.isEmpty()) {
+    return;
+  }
+  QList<LayoutComputer> stacked;
+  LayoutComputer sp7;
+  sp7.name = QStringLiteral("sp7");
+  sp7.z = 2;
+  sp7.monitors.append({QStringLiteral("sp7"), 0, 0, 3840, 2160});
+  LayoutComputer sur3Stack;
+  sur3Stack.name = QStringLiteral("sur3");
+  sur3Stack.z = 1;
+  sur3Stack.monitors.append({QStringLiteral("sur3"), 0, 0, 2560, 1440});
+  LayoutComputer dreamStack;
+  dreamStack.name = QStringLiteral("dream");
+  dreamStack.z = 0;
+  dreamStack.monitors.append({QStringLiteral("dream"), 0, 0, 1920, 1080});
+  stacked.append(sp7);
+  stacked.append(sur3Stack);
+  stacked.append(dreamStack);
+  ServerConfig stackConfig;
+  stackConfig.setMonitorLayout(stacked);
+  stackConfig.setUseMonitorLayout(true);
+  MonitorLayoutWidget stackWidget(stackConfig);
+  stackWidget.resize(1100, 720);
+  stackWidget.show();
+  QApplication::processEvents();
+  QImage idle(stackWidget.size(), QImage::Format_ARGB32_Premultiplied);
+  idle.fill(Qt::white);
+  stackWidget.render(&idle);
+  QVERIFY(idle.save(QStringLiteral("%1/stack-idle.png").arg(directory)));
+
+  const QPoint hover = stackWidget.placedComputerCenter(QStringLiteral("sp7"));
+  QMouseEvent move(
+      QEvent::MouseMove, QPointF(hover), stackWidget.mapToGlobal(hover), Qt::NoButton, Qt::NoButton, Qt::NoModifier
+  );
+  QApplication::sendEvent(&stackWidget, &move);
+  QApplication::processEvents();
+  QImage fanned(stackWidget.size(), QImage::Format_ARGB32_Premultiplied);
+  fanned.fill(Qt::white);
+  stackWidget.render(&fanned);
+  QVERIFY(fanned.save(QStringLiteral("%1/stack-hover.png").arg(directory)));
 }
 
 QTEST_MAIN(LayoutClientsTests)
