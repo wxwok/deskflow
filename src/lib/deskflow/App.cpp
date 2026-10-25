@@ -160,10 +160,13 @@ void App::initApp()
   // setup file logging after parsing args
   setupFileLogging();
 
-  // After the file logger exists, so this line is in the log the user reads
-  // and is not dropped when only stdout was attached. kVersionFull is the
-  // cmake DESKFLOW_VERSION_FULL string (semantic version + git short hash).
-  LOG_INFO("%s version %s", kCoreBinName, kVersionFull);
+  // After the file logger exists, so this line is in the log the user reads.
+  // kVersionFull is DESKFLOW_VERSION_FULL (semantic version + git short hash).
+  // kVersionBuildTag is DESKFLOW_BUILD_TAG, so two builds of one number differ.
+  LOG_INFO(
+      "%s version %s tag=%s (ReleaseAt half-monitor inset + travel edge prefer)", kCoreBinName, kVersionFull,
+      kVersionBuildTag
+  );
 
   // load configuration
   loadConfig();

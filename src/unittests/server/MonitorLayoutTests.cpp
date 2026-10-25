@@ -303,4 +303,52 @@ void MonitorLayoutTests::switchEdgeSegments()
   QCOMPARE(bottom[0].end, 40);
 }
 
+void MonitorLayoutTests::abuttingExitPrefersEdgeTravelOverStack()
+{
+  // Mirrors work output-3 (portrait) above a stacked sp7 that also touches
+  // output-4's left edge. Leaving sp7 upward must use edge travel (Top), not
+  // stackTarget's NoDirection — otherwise primary ReleaseAt skips the portal
+  // inset and bounces back to sp7's top-right.
+  MonitorLayout layout;
+  layout.setComputer(
+      "work", 0, 0,
+      {
+          monitor("output-3", 0, 0, 1080, 1920),
+          monitor("output-1", 1080, 0, 3840, 2160),
+          monitor("output-4", 1080, 2160, 3840, 2160),
+      },
+      true, 0
+  );
+  layout.setComputer("sp7", -1656, 1920, {monitor("Surface Panel", 0, 0, 2736, 1824)}, true, 1);
+
+  int32_t clampX = 0;
+  int32_t clampY = 0;
+
+  // Near sp7's right edge (entered from output-4), move up onto output-3.
+  const auto fromRight = layout.travel("sp7", 2700, 40, 2700, -20, clampX, clampY);
+  QVERIFY(fromRight.has_value());
+  QVERIFY(fromRight->computer == "work");
+  QCOMPARE(fromRight->travel, Direction::Top);
+  QCOMPARE(fromRight->x, 1044);
+  QVERIFY(fromRight->y <= 1919);
+  QVERIFY(fromRight->y >= 1900); // overshoot insets a few pixels, not NoDirection mid-screen
+
+  // Centre-top return (entered from output-3) still lands on output-3 via Top.
+  const auto fromTop = layout.travel("sp7", 2000, 30, 2000, -10, clampX, clampY);
+  QVERIFY(fromTop.has_value());
+  QVERIFY(fromTop->computer == "work");
+  QCOMPARE(fromTop->travel, Direction::Top);
+  QCOMPARE(fromTop->x, 344);
+
+  // Overlap drop-off (no shared edge) must still use stackTarget.
+  MonitorLayout stacked;
+  stacked.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 0);
+  stacked.setComputer("sur3", 100, 100, {monitor("sur3", 0, 0, 800, 600)}, true, 1);
+  stacked.setComputer("sp7", 100, 100, {monitor("sp7", 0, 0, 400, 300)}, true, 2);
+  const auto dropped = stacked.travel("sp7", 200, 100, 400, 100, clampX, clampY);
+  QVERIFY(dropped.has_value());
+  QVERIFY(dropped->computer == "sur3");
+  QCOMPARE(dropped->travel, Direction::NoDirection);
+}
+
 QTEST_MAIN(MonitorLayoutTests)

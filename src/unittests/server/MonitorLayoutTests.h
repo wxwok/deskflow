@@ -19,4 +19,5 @@ private Q_SLOTS:
   void snapAdjacencyAndAlignment();
   void snapRejectsOverlap();
   void switchEdgeSegments();
+  void abuttingExitPrefersEdgeTravelOverStack();
 };

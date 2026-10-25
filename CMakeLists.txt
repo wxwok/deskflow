@@ -124,6 +124,12 @@ unset(DESKFLOW_VERSION_MINOR)
 unset(DESKFLOW_VERSION_PATCH)
 unset(DESKFLOW_VERSION_TWEAK)
 
+# Distinguish patched work builds in the startup log (override with -DDESKFLOW_BUILD_TAG=...).
+if(NOT DEFINED DESKFLOW_BUILD_TAG OR DESKFLOW_BUILD_TAG STREQUAL "")
+  set(DESKFLOW_BUILD_TAG "stock")
+endif()
+message(STATUS "Deskflow build tag: ${DESKFLOW_BUILD_TAG}")
+
 # version+sha (or a -DDESKFLOW_VERSION_FULL override). Startup logs print this
 # so two packages that share a four-part number are still distinguishable.
 if(NOT DESKFLOW_VERSION_FULL)

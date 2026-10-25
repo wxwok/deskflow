@@ -33,7 +33,8 @@ void MonitorLayout::clear()
 }
 
 void MonitorLayout::setComputer(
-    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+    bool enabled, int32_t z
 )
 {
   std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
@@ -47,11 +48,13 @@ void MonitorLayout::setComputer(
       placement.originX = originX;
       placement.originY = originY;
       placement.monitors = std::move(monitors);
+      placement.enabled = enabled;
+      placement.z = z;
       return;
     }
   }
 
-  m_computers.push_back(Placement{name, originX, originY, std::move(monitors)});
+  m_computers.push_back(Placement{name, originX, originY, std::move(monitors), enabled, z});
 }
 
 bool MonitorLayout::enabled() const
@@ -78,6 +81,9 @@ std::vector<MonitorLayout::GlobalMonitor> MonitorLayout::globals() const
 {
   std::vector<GlobalMonitor> all;
   for (const auto &placement : m_computers) {
+    if (!placement.enabled) {
+      continue;
+    }
     for (const auto &monitor : placement.monitors) {
       all.push_back(GlobalMonitor{placement.name, monitor, placement.originX, placement.originY});
     }
@@ -294,6 +300,56 @@ void MonitorLayout::hitEdges(
   }
 }
 
+std::optional<deskflow::MonitorCrossing>
+MonitorLayout::stackTarget(const std::string &computer, int32_t x, int32_t y) const
+{
+  const Placement *self = find(computer);
+  if (self == nullptr) {
+    return std::nullopt;
+  }
+  const int32_t globalX = self->originX + x;
+  const int32_t globalY = self->originY + y;
+
+  const GlobalMonitor *best = nullptr;
+  int bestZ = 0;
+  int bestIndex = -1;
+  const auto all = globals();
+  for (const auto &monitor : all) {
+    if (!monitor.containsGlobal(globalX, globalY)) {
+      continue;
+    }
+    const Placement *placement = find(monitor.computer);
+    if (placement == nullptr) {
+      continue;
+    }
+    int index = 0;
+    for (const auto &candidate : m_computers) {
+      if (candidate.name == monitor.computer) {
+        break;
+      }
+      ++index;
+    }
+    const bool higher = best == nullptr || placement->z > bestZ || (placement->z == bestZ && index > bestIndex);
+    if (!higher) {
+      continue;
+    }
+    best = &monitor;
+    bestZ = placement->z;
+    bestIndex = index;
+  }
+
+  if (best == nullptr || best->computer == computer) {
+    return std::nullopt;
+  }
+
+  deskflow::MonitorCrossing crossing;
+  crossing.computer = best->computer;
+  crossing.x = clampTo(globalX - best->originX, best->local.x, best->local.width);
+  crossing.y = clampTo(globalY - best->originY, best->local.y, best->local.height);
+  crossing.travel = Direction::NoDirection;
+  return crossing;
+}
+
 std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
     const std::string &computer, int32_t fromX, int32_t fromY, int32_t toX, int32_t toY, int32_t &clampX,
     int32_t &clampY
@@ -302,7 +358,16 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
   clampX = toX;
   clampY = toY;
   const auto all = globals();
+
+  // Still on this computer: only switch via z-order peek into a higher stack.
+  // Do not consult stackTarget for points that have already left our monitors.
+  // That path returns NoDirection and skips primary ReleaseAt insets, which
+  // re-triggers portal barriers (sp7 right-edge enter, then exit onto work
+  // output-3's concave bottom, bouncing to sp7's top-right).
   if (monitorAt(all, computer, toX, toY) != nullptr) {
+    if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+      return stacked;
+    }
     return std::nullopt;
   }
 
@@ -311,6 +376,9 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
   for (int guard = 0; guard < 8; ++guard) {
     const GlobalMonitor *monitor = monitorAt(all, computer, x, y);
     if (monitor == nullptr) {
+      if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+        return stacked;
+      }
       clampToComputer(computer, clampX, clampY);
       return std::nullopt;
     }
@@ -421,11 +489,20 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
       }
     }
 
+    // No abutting remote neighbour on this side (common for stacked overlap
+    // that shares area but not an edge). Drop through z-order instead.
+    if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+      return stacked;
+    }
+
     clampX = clampTo(toX, local.x, local.width);
     clampY = clampTo(toY, local.y, local.height);
     return std::nullopt;
   }
 
+  if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+    return stacked;
+  }
   clampToComputer(computer, clampX, clampY);
   return std::nullopt;
 }

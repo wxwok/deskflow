@@ -823,7 +823,9 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     arrival = Top;
     break;
   case NoDirection:
-    return;
+    // stackTarget crossings have no side; still inset below from every nearby
+    // switch barrier so portal ReleaseAt cannot re-grab.
+    break;
   }
 
   const deskflow::MonitorRect *hit = nullptr;
@@ -842,18 +844,27 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
   // exactly on edge.position — match a near-edge band, then push well inside.
   // A one-pixel jump zone is nowhere near enough for concave bottoms (e.g.
   // work output-3 above a stacked neighbour): ~60px still bounced in testing.
+  // Mutter re-grabs ReleaseAt on concave bottoms even ~480px in (output-3
+  // above stacked sp7). Half-monitor inset held in testing; quarter did not.
   constexpr int32_t kPortalEdgeTolerance = 512;
-  constexpr int32_t kPortalMinInset = 128;
-  const int32_t along = (arrival == Left || arrival == Right) ? y : x;
-  const int32_t position = (arrival == Left || arrival == Right) ? x : y;
-  bool onSwitchEdge = false;
-  for (const auto &edge : m_monitorLayout.switchEdges(getName(dst))) {
-    if (edge.side != arrival || !edge.contains(along)) {
-      continue;
+  constexpr int32_t kPortalMinInset = 512;
+  const int32_t halfW = std::max<int32_t>(0, (hit->width - 1) / 2);
+  const int32_t halfH = std::max<int32_t>(0, (hit->height - 1) / 2);
+  const int32_t insetX = std::max({zone, kPortalMinInset, halfW});
+  const int32_t insetY = std::max({zone, kPortalMinInset, halfH});
+
+  auto edgeMatches = [&](const deskflow::EdgeSpan &edge, Direction side) {
+    if (edge.side != side) {
+      return false;
+    }
+    const int32_t along = (side == Left || side == Right) ? y : x;
+    const int32_t position = (side == Left || side == Right) ? x : y;
+    if (!edge.contains(along)) {
+      return false;
     }
     const int32_t dist = std::abs(edge.position - position);
     bool insideFromEdge = false;
-    switch (arrival) {
+    switch (side) {
     case Left:
       insideFromEdge = position >= edge.position;
       break;
@@ -869,35 +880,46 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     case NoDirection:
       break;
     }
-    if (insideFromEdge && dist <= kPortalEdgeTolerance) {
-      onSwitchEdge = true;
+    return insideFromEdge && dist <= kPortalEdgeTolerance;
+  };
+
+  const auto edges = m_monitorLayout.switchEdges(getName(dst));
+  auto applySide = [&](Direction side) {
+    bool matched = false;
+    for (const auto &edge : edges) {
+      if (edgeMatches(edge, side)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return;
+    }
+    switch (side) {
+    case Left:
+      x = std::min(hit->right() - 1, std::max(x, hit->x + insetX));
+      break;
+    case Right:
+      x = std::max(hit->x, std::min(x, hit->right() - 1 - insetX));
+      break;
+    case Top:
+      y = std::min(hit->bottom() - 1, std::max(y, hit->y + insetY));
+      break;
+    case Bottom:
+      y = std::max(hit->y, std::min(y, hit->bottom() - 1 - insetY));
+      break;
+    case NoDirection:
       break;
     }
-  }
-  if (!onSwitchEdge) {
-    return;
-  }
+  };
 
-  const int32_t halfW = std::max<int32_t>(0, (hit->width - 1) / 2);
-  const int32_t halfH = std::max<int32_t>(0, (hit->height - 1) / 2);
-  const int32_t insetX = std::max({zone, kPortalMinInset, std::min(halfW, hit->width / 4)});
-  const int32_t insetY = std::max({zone, kPortalMinInset, std::min(halfH, hit->height / 4)});
-
-  switch (arrival) {
-  case Left:
-    x = std::min(hit->right() - 1, std::max(x, hit->x + insetX));
-    break;
-  case Right:
-    x = std::max(hit->x, std::min(x, hit->right() - 1 - insetX));
-    break;
-  case Top:
-    y = std::min(hit->bottom() - 1, std::max(y, hit->y + insetY));
-    break;
-  case Bottom:
-    y = std::max(hit->y, std::min(y, hit->bottom() - 1 - insetY));
-    break;
-  case NoDirection:
-    break;
+  if (arrival == NoDirection) {
+    applySide(Left);
+    applySide(Right);
+    applySide(Top);
+    applySide(Bottom);
+  } else {
+    applySide(arrival);
   }
 }
 

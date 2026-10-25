@@ -19,9 +19,13 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QLocalSocket>
 #include <QMessageBox>
 #include <QSharedMemory>
+#include <QTextStream>
 
 #if defined(Q_OS_MACOS)
 #include <Carbon/Carbon.h>
@@ -127,7 +131,16 @@ int main(int argc, char *argv[])
   updateIconTheme();
 
   qInstallMessageHandler(deskflow::gui::messages::messageHandler);
-  qInfo("%s version %s", kAppName, kVersionFull);
+  {
+    const auto line = QStringLiteral("%1 version %2 tag=%3 (ReleaseAt half-monitor inset + travel edge prefer)")
+                          .arg(kAppName, kVersionFull, kVersionBuildTag);
+    qInfo().noquote() << line;
+    QFile logFile(QDir::home().filePath(QStringLiteral("deskflow.log")));
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+      QTextStream(&logFile
+      ) << QStringLiteral("[%1] INFO: %2\n").arg(QDateTime::currentDateTime().toString(Qt::ISODate), line);
+    }
+  }
 
 #if defined(Q_OS_MACOS)
 

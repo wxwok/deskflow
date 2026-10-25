@@ -709,9 +709,83 @@ PortalInputCapture::mapPortalActivationToComputerPosition(guint barrierId, doubl
 
 void PortalInputCapture::nudgeMappedReleaseAwayFromBarriers(double &x, double &y) const
 {
-  // Matches Server::avoidJumpZoneLayout portal inset; half-zone clamp is inside the helper.
-  constexpr int kPortalReleaseMargin = 128;
+  // Matches Server::avoidJumpZoneLayout half-monitor inset; helper clamps to half-zone.
+  constexpr int kPortalReleaseMargin = 960;
   if (m_barrierInfo.empty()) {
+    // Barriers may still be applying asynchronously; switch edges still know where
+    // ReleaseAt must stay clear of (output-3 bottom → sp7).
+    const auto edges = switchEdges();
+    if (edges.empty()) {
+      return;
+    }
+    Bounds portalBounds;
+    if (!getPortalBounds(portalBounds)) {
+      return;
+    }
+    std::int32_t computerX = 0;
+    std::int32_t computerY = 0;
+    std::int32_t computerW = 0;
+    std::int32_t computerH = 0;
+    m_computer->getShape(computerX, computerY, computerW, computerH);
+    const int computerRight = computerX + computerW - 1;
+    const int computerBottom = computerY + computerH - 1;
+    // Map portal point → computer, nudge using edge spans as zone-local sides, map back.
+    double cx = static_cast<double>(
+        scaleCoordinateBetweenRanges(x, portalBounds.left, portalBounds.right, computerX, computerRight)
+    );
+    double cy = static_cast<double>(
+        scaleCoordinateBetweenRanges(y, portalBounds.top, portalBounds.bottom, computerY, computerBottom)
+    );
+    const double beforeX = x;
+    const double beforeY = y;
+    for (const auto &span : edges) {
+      using enum Direction;
+      // Synthesize a one-monitor-thick zone around the switch edge for the helper.
+      deskflow::ReleaseSwitchEdge edge;
+      const int alongPad = kPortalReleaseMargin;
+      switch (span.side) {
+      case Left:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Left;
+        edge.zoneLeft = span.position;
+        edge.zoneRight = span.position + alongPad * 2;
+        edge.zoneTop = span.begin;
+        edge.zoneBottom = span.end;
+        break;
+      case Right:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Right;
+        edge.zoneRight = span.position;
+        edge.zoneLeft = span.position - alongPad * 2;
+        edge.zoneTop = span.begin;
+        edge.zoneBottom = span.end;
+        break;
+      case Top:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Top;
+        edge.zoneTop = span.position;
+        edge.zoneBottom = span.position + alongPad * 2;
+        edge.zoneLeft = span.begin;
+        edge.zoneRight = span.end;
+        break;
+      case Bottom:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Bottom;
+        edge.zoneBottom = span.position;
+        edge.zoneTop = span.position - alongPad * 2;
+        edge.zoneLeft = span.begin;
+        edge.zoneRight = span.end;
+        break;
+      case NoDirection:
+        continue;
+      }
+      deskflow::nudgeReleaseAwayFromSwitchEdges(cx, cy, &edge, 1, kPortalReleaseMargin);
+    }
+    x = static_cast<double>(
+        scaleCoordinateBetweenRanges(cx, computerX, computerRight, portalBounds.left, portalBounds.right)
+    );
+    y = static_cast<double>(
+        scaleCoordinateBetweenRanges(cy, computerY, computerBottom, portalBounds.top, portalBounds.bottom)
+    );
+    if (x != beforeX || y != beforeY) {
+      LOG_DEBUG("nudged portal release (switch-edge fallback) from %.1f,%.1f to %.1f,%.1f", beforeX, beforeY, x, y);
+    }
     return;
   }
 
