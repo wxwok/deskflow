@@ -11,8 +11,10 @@
 #include "arch/Arch.h"
 #include "base/Log.h"
 #include "base/LogOutputters.h"
+#include "common/Constants.h"
 #include "common/ExitCodes.h"
 #include "common/Settings.h"
+#include "common/VersionInfo.h"
 #include "deskflow/DeskflowException.h"
 #include "mt/ThreadException.h"
 
@@ -157,6 +159,11 @@ void App::initApp()
 
   // setup file logging after parsing args
   setupFileLogging();
+
+  // After the file logger exists, so this line is in the log the user reads
+  // and is not dropped when only stdout was attached. kVersionFull is the
+  // cmake DESKFLOW_VERSION_FULL string (semantic version + git short hash).
+  LOG_INFO("%s version %s", kCoreBinName, kVersionFull);
 
   // load configuration
   loadConfig();

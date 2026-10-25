@@ -44,6 +44,21 @@ set(DESKFLOW_VERSION_MAJOR 1)
 set(DESKFLOW_VERSION_MINOR 27)
 set(DESKFLOW_VERSION_PATCH 0)
 set(DESKFLOW_VERSION_TWEAK 0)
+set(GIT_SHA_SHORT "")
+
+# The short hash identifies which commit was packaged. A forced four-part
+# version must still record it, or every 1.27.1.x build logs "v1.27.1.x ()".
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
+  find_package(Git)
+  if(GIT_FOUND)
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      OUTPUT_VARIABLE GIT_SHA_SHORT
+      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
+endif()
 
 # Four-part override for fork packages (for example 1.27.1.1). Upstream
 # builds leave this unset and keep taking the version from git describe.
@@ -53,15 +68,7 @@ if(DESKFLOW_FORCE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
   set(DESKFLOW_VERSION_MINOR "${CMAKE_MATCH_2}")
   set(DESKFLOW_VERSION_PATCH "${CMAKE_MATCH_3}")
   set(DESKFLOW_VERSION_TWEAK "${CMAKE_MATCH_4}")
-elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
-  find_package(Git)
-  if(GIT_FOUND)
-    execute_process(
-      COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
-      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-      OUTPUT_VARIABLE GIT_SHA_SHORT
-      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+elseif(GIT_FOUND)
     execute_process(
       COMMAND ${GIT_EXECUTABLE} describe --long --match v* --always
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -85,7 +92,6 @@ elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
       set(DESKFLOW_VERSION_TWEAK "9999")
     endif()
     unset(GITREV)
-  endif()
 endif()
 
 #generate vcpkg file if needed
@@ -118,7 +124,18 @@ unset(DESKFLOW_VERSION_MINOR)
 unset(DESKFLOW_VERSION_PATCH)
 unset(DESKFLOW_VERSION_TWEAK)
 
-message(STATUS "Building ${CMAKE_PROJECT_NAME}-${CMAKE_PROJECT_VERSION}")
+# version+sha (or a -DDESKFLOW_VERSION_FULL override). Startup logs print this
+# so two packages that share a four-part number are still distinguishable.
+if(NOT DESKFLOW_VERSION_FULL)
+  if(GIT_SHA_SHORT)
+    set(DESKFLOW_VERSION_FULL "${CMAKE_PROJECT_VERSION}+${GIT_SHA_SHORT}")
+  else()
+    set(DESKFLOW_VERSION_FULL "${CMAKE_PROJECT_VERSION}")
+  endif()
+endif()
+set(DESKFLOW_DISPLAY_VERSION "${DESKFLOW_VERSION_FULL}")
+
+message(STATUS "Building ${CMAKE_PROJECT_NAME}-${DESKFLOW_VERSION_FULL}")
 
 # Set lib versions
 set(REQUIRED_OPENSSL_VERSION 3.0)

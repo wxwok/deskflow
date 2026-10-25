@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
   updateIconTheme();
 
   qInstallMessageHandler(deskflow::gui::messages::messageHandler);
-  qInfo("%s v%s", kAppName, kDisplayVersion);
+  qInfo("%s version %s", kAppName, kVersionFull);
 
 #if defined(Q_OS_MACOS)
 

@@ -9,6 +9,7 @@
 
 const auto kVersion = "@CMAKE_PROJECT_VERSION@";
 const auto kVersionGitSha = "@GIT_SHA_SHORT@";
-const auto kDisplayVersion = @CMAKE_PROJECT_VERSION_TWEAK@
-                           ? "@CMAKE_PROJECT_VERSION@ (@GIT_SHA_SHORT@)"
-                           : "@CMAKE_PROJECT_VERSION_MAJOR@.@CMAKE_PROJECT_VERSION_MINOR@.@CMAKE_PROJECT_VERSION_PATCH@";
+/// Semantic version plus build id, from cmake DESKFLOW_VERSION_FULL.
+/// Example: 1.27.1.9+b86f2444. No empty parentheses when the hash is missing.
+const auto kVersionFull = "@DESKFLOW_VERSION_FULL@";
+const auto kDisplayVersion = "@DESKFLOW_DISPLAY_VERSION@";
