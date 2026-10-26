@@ -21,6 +21,8 @@ private Q_SLOTS:
   void snapAllowsOverlap();
   void switchEdgeSegments();
   void stackTopReceivesTheOverlap();
+  void stackFailoverDropsAndRestores();
+  void stackFailoverOutsideTheLiveLayout();
   void layoutZOrderRoundTrip();
   void disabledComputerIsNotASwitchTarget();
   void unknownOrDisabledSwitchIsSkipped();

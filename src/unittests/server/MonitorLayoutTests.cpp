@@ -16,6 +16,7 @@
 #include <QDir>
 #include <QFile>
 
+#include <map>
 #include <sstream>
 
 using namespace deskflow::server;
@@ -359,6 +360,178 @@ void MonitorLayoutTests::stackTopReceivesTheOverlap()
   const auto under = layout.stackTarget("sur3", 50, 50);
   QVERIFY(under.has_value());
   QVERIFY(under->computer == "work");
+}
+
+void MonitorLayoutTests::stackFailoverDropsAndRestores()
+{
+  MonitorLayout layout;
+  layout.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 0);
+  layout.setComputer("sur3", 100, 100, {monitor("sur3", 0, 0, 800, 600)}, true, 1);
+  layout.setComputer("sp7", 100, 100, {monitor("sp7", 0, 0, 400, 300)}, true, 2);
+
+  const int32_t globalX = 150;
+  const int32_t globalY = 150;
+  using enum deskflow::StackAvailability;
+  auto decide = [&](const std::map<std::string, deskflow::StackAvailability> &states) {
+    std::vector<deskflow::StackCandidate> candidates;
+    for (const auto &member : layout.stackMembersAt(globalX, globalY)) {
+      deskflow::StackCandidate candidate;
+      candidate.name = member.name;
+      candidate.z = member.z;
+      candidate.order = member.order;
+      candidate.x = member.x;
+      candidate.y = member.y;
+      const auto state = states.find(member.name);
+      candidate.availability = state == states.end() ? Missing : state->second;
+      candidates.push_back(std::move(candidate));
+    }
+    return deskflow::chooseActiveStackLayer(std::move(candidates));
+  };
+
+  // There is no pinned layer. The highest available computer receives the point.
+  const auto top = decide({{"work", Available}, {"sur3", Available}, {"sp7", Available}});
+  QVERIFY(top.active == "sp7");
+  QCOMPARE(top.x, 50);
+  QCOMPARE(top.y, 50);
+  QVERIFY(top.skipped.empty());
+
+  // The front computer drops, is missing, or cannot be reached. The next layer takes the point.
+  const auto dropped = decide({{"work", Available}, {"sur3", Available}, {"sp7", Disconnected}});
+  const auto missingFront = decide({{"work", Available}, {"sur3", Available}, {"sp7", Missing}});
+  QVERIFY(missingFront.active == "sur3");
+  const auto unreachableFront = decide({{"work", Available}, {"sur3", Available}, {"sp7", Unreachable}});
+  QVERIFY(unreachableFront.active == "sur3");
+  QVERIFY(dropped.active == "sur3");
+  QCOMPARE(dropped.x, 50);
+  QCOMPARE(dropped.y, 50);
+  QCOMPARE(static_cast<int>(dropped.skipped.size()), 1);
+  QVERIFY(dropped.skipped.front().name == "sp7");
+  QCOMPARE(static_cast<int>(dropped.skipped.front().availability), static_cast<int>(Disconnected));
+  const auto dropLog = deskflow::describeStackActivation("\"sp7\" disconnected", "sp7", dropped);
+  const std::string dropExpected =
+      "\"sp7\" disconnected, skip \"sp7\" (disconnected), activate \"sur3\" at 50,50 (was \"sp7\")";
+  QCOMPARE(dropLog, dropExpected);
+
+  // The middle computer drops as well. The bottom layer is the one that remains.
+  const auto droppedAgain = decide({{"work", Available}, {"sur3", Disconnected}, {"sp7", Disconnected}});
+  QVERIFY(droppedAgain.active == "work");
+  QCOMPARE(droppedAgain.x, 150);
+  QCOMPARE(droppedAgain.y, 150);
+  QCOMPARE(static_cast<int>(droppedAgain.skipped.size()), 2);
+  const auto secondLog = deskflow::describeStackActivation("\"sur3\" disconnected", "sur3", droppedAgain);
+  const std::string secondExpected =
+      "\"sur3\" disconnected, skip \"sp7\" (disconnected), skip \"sur3\" (disconnected), "
+      "activate \"work\" at 150,150 (was \"sur3\")";
+  QCOMPARE(secondLog, secondExpected);
+
+  // Every layer is unavailable. The caller falls back to the primary computer.
+  const auto none = decide({{"work", Disconnected}, {"sur3", Unreachable}, {"sp7", Missing}});
+  QVERIFY(none.active.empty());
+  QCOMPARE(static_cast<int>(none.skipped.size()), 3);
+  const auto noneLog = deskflow::describeStackActivation("\"work\" disconnected", "work", none);
+  const std::string noneExpected = "\"work\" disconnected, skip \"sp7\" (missing), skip \"sur3\" (unreachable), "
+                                   "skip \"work\" (disconnected), no available layer; fall back from \"work\"";
+  QCOMPARE(noneLog, noneExpected);
+
+  // The front computer connects again and takes the pointer back, even while the middle stays down.
+  const auto restored = decide({{"work", Available}, {"sur3", Disconnected}, {"sp7", Available}});
+  QVERIFY(restored.active == "sp7");
+  QCOMPARE(restored.x, 50);
+  QCOMPARE(restored.y, 50);
+  QVERIFY(restored.skipped.empty());
+  const auto backLog = deskflow::describeStackActivation("\"sp7\" connected", "work", restored);
+  QCOMPARE(backLog, std::string("\"sp7\" connected, activate \"sp7\" at 50,50 (was \"work\")"));
+
+  // Equal z: the later placement is in front. If that one drops, the earlier one is used.
+  deskflow::StackCandidate earlier{"sur3", 4, 0, Available, 8, 9};
+  deskflow::StackCandidate later{"sp7", 4, 1, Available, 6, 7};
+  const auto tied = deskflow::chooseActiveStackLayer({earlier, later});
+  QVERIFY(tied.active == "sp7");
+  QCOMPARE(tied.x, 6);
+  later.availability = Disconnected;
+  const auto tieDropped = deskflow::chooseActiveStackLayer({earlier, later});
+  QVERIFY(tieDropped.active == "sur3");
+  QCOMPARE(tieDropped.x, 8);
+  later.availability = Available;
+  const auto tieRestored = deskflow::chooseActiveStackLayer({later, earlier});
+  QVERIFY(tieRestored.active == "sp7");
+}
+
+void MonitorLayoutTests::stackFailoverOutsideTheLiveLayout()
+{
+  // sp7 has dropped out of the live layout. Its saved placement still covers the point.
+  MonitorLayout layout;
+  layout.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 0);
+  layout.setComputer("sur3", 100, 100, {monitor("sur3", 0, 0, 800, 600)}, true, 1);
+
+  const auto saved = monitor("sp7", 0, 0, 400, 300);
+  std::vector<deskflow::StackCandidate> candidates;
+  for (const auto &member : layout.stackMembersAt(150, 150)) {
+    candidates.push_back(
+        {member.name, member.z, member.order, deskflow::StackAvailability::Available, member.x, member.y}
+    );
+  }
+  QVERIFY(deskflow::appendStackCandidate(
+      candidates, "sp7", 2, -1, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
+  ));
+  QVERIFY(!deskflow::appendStackCandidate(
+      candidates, "SP7", 2, -2, deskflow::StackAvailability::Available, 100, 100, {saved}, 150, 150
+  ));
+  QVERIFY(!deskflow::appendStackCandidate(
+      candidates, "dream", 3, -3, deskflow::StackAvailability::Missing, 1000, 1000, {monitor("dream", 0, 0, 10, 10)},
+      150, 150
+  ));
+
+  const auto dropped = deskflow::chooseActiveStackLayer(candidates);
+  QVERIFY(dropped.active == "sur3");
+  QCOMPARE(dropped.x, 50);
+  QCOMPARE(dropped.y, 50);
+  QCOMPARE(static_cast<int>(dropped.skipped.size()), 1);
+  QVERIFY(dropped.skipped.front().name == "sp7");
+
+  // sur3 drops too, and is also only present as a saved placement.
+  MonitorLayout bottom;
+  bottom.setComputer("work", 0, 0, {monitor("work", 0, 0, 1920, 1080)}, true, 0);
+  std::vector<deskflow::StackCandidate> remaining;
+  for (const auto &member : bottom.stackMembersAt(150, 150)) {
+    remaining.push_back(
+        {member.name, member.z, member.order, deskflow::StackAvailability::Available, member.x, member.y}
+    );
+  }
+  QVERIFY(deskflow::appendStackCandidate(
+      remaining, "sur3", 1, -1, deskflow::StackAvailability::Disconnected, 100, 100, {monitor("sur3", 0, 0, 800, 600)},
+      150, 150
+  ));
+  QVERIFY(deskflow::appendStackCandidate(
+      remaining, "sp7", 2, -2, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
+  ));
+  const auto droppedAgain = deskflow::chooseActiveStackLayer(remaining);
+  QVERIFY(droppedAgain.active == "work");
+  QCOMPARE(droppedAgain.x, 150);
+  QCOMPARE(droppedAgain.y, 150);
+  QCOMPARE(static_cast<int>(droppedAgain.skipped.size()), 2);
+
+  // sp7 is back in the live layout and available, so it is the front layer again.
+  layout.setComputer("sp7", 100, 100, {saved}, true, 2);
+  std::vector<deskflow::StackCandidate> restored;
+  for (const auto &member : layout.stackMembersAt(150, 150)) {
+    auto availability = deskflow::StackAvailability::Available;
+    if (member.name == "sur3") {
+      availability = deskflow::StackAvailability::Disconnected;
+    }
+    restored.push_back({member.name, member.z, member.order, availability, member.x, member.y});
+  }
+  const auto back = deskflow::chooseActiveStackLayer(std::move(restored));
+  QVERIFY(back.active == "sp7");
+  QCOMPARE(back.x, 50);
+  QCOMPARE(back.y, 50);
+
+  int32_t localX = 0;
+  int32_t localY = 0;
+  QVERIFY(deskflow::stackPointOnPlacement(100, 100, {saved}, 150, 150, localX, localY));
+  QCOMPARE(localX, 50);
+  QCOMPARE(localY, 50);
+  QVERIFY(!deskflow::stackPointOnPlacement(100, 100, {saved}, 10, 10, localX, localY));
 }
 
 void MonitorLayoutTests::layoutZOrderRoundTrip()

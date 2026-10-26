@@ -222,8 +222,8 @@ private:
   // returns the jump zone of the client
   int32_t getJumpZoneSize(const BaseClientProxy *) const;
 
-  // change the active m_computer
-  void switchComputer(BaseClientProxy *, int32_t x, int32_t y, bool forScreenSaver);
+  // change the active m_computer. \p notifyLeave is false when \c m_active has already disconnected.
+  void switchComputer(BaseClientProxy *, int32_t x, int32_t y, bool forScreenSaver, bool notifyLeave = true);
 
   // jump to computer
   void jumpToComputer(BaseClientProxy *);
@@ -263,6 +263,14 @@ private:
 
   // Rebuild the runtime layout from connected computers and tell the primary.
   void rebuildMonitorLayout();
+
+  // Move the pointer to the highest available stacked layer at its current point.
+  // \p currentIsDead skips telling the active computer to leave.
+  bool retargetStackedLayer(const std::string &trigger, const char *cause, bool currentIsDead);
+
+  bool layoutGlobal(const std::string &name, int32_t x, int32_t y, int32_t &globalX, int32_t &globalY) const;
+
+  std::vector<deskflow::StackCandidate> stackCandidatesAt(int32_t globalX, int32_t globalY) const;
 
   // Tell the GUI the latest per-monitor geometry for every connected computer.
   void publishMonitorGeometry() const;
@@ -482,6 +490,12 @@ private:
 
   // computer locking (former scroll lock)
   bool m_lockedToComputer = false;
+
+  // True after the pointer position on m_active has been recorded.
+  bool m_stackCursorValid = false;
+
+  // Guards retargetStackedLayer against re-entry from enter/leave.
+  bool m_stackRetargeting = false;
 
   bool m_defaultLockToComputerState = false;
   bool m_disableLockToComputer = false;
