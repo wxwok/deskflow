@@ -184,6 +184,14 @@ if [[ -z $depends ]]; then
   exit 1
 fi
 installed_size=$(du -sk "$STAGE/usr" | awk '{ print $1 }')
+build_tag=${DESKFLOW_BUILD_TAG:-}
+if [[ -n $build_tag ]]; then
+  summary="Keyboard and mouse sharing utility (${VERSION} tag=${build_tag})"
+  detail=" This package is the wxwok trial build ${VERSION} tag=${build_tag}."
+else
+  summary="Keyboard and mouse sharing utility (wxwok monitor-layout build)"
+  detail=" This package is the wxwok per-monitor layout build."
+fi
 cat >"$STAGE/DEBIAN/control" <<EOF
 Package: deskflow
 Version: $VERSION
@@ -194,10 +202,11 @@ Maintainer: Deskflow Devs <maintainers@deskflow.org>
 Installed-Size: $installed_size
 Depends: $depends
 Homepage: https://deskflow.org
-Description: Keyboard and mouse sharing utility (wxwok monitor-layout build)
+Description: $summary
  Deskflow shares a keyboard and mouse across computers.
- This package is the wxwok per-monitor layout build. Qt, libei, and libportal
- are private copies under /usr/lib/deskflow so it installs on Ubuntu 24.04.
+$detail
+ Qt, libei, and libportal are private copies under /usr/lib/deskflow
+ so it installs on Ubuntu 24.04.
 EOF
 rm -f "$STAGE/DEBIAN/substvars"
 
