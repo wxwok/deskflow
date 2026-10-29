@@ -73,10 +73,18 @@ jobs:
         run: |
           export PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
           export LD_LIBRARY_PATH=/opt/qt/6.8.3/gcc_64/lib:/usr/local/lib/x86_64-linux-gnu
+          # CMake's own git rev-parse does not see this checkout (safe.directory
+          # / missing .git from its point of view), so the startup line would
+          # be "1.27.1.12" with no "+sha". Pass the hash explicitly.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sha=$(git rev-parse --short=8 HEAD)
+          test -n "$sha"
+          echo "git sha $sha"
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSKIP_BUILD_TESTS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DDESKFLOW_FORCE_VERSION="${DESKFLOW_VERSION}" \
+            -DDESKFLOW_VERSION_FULL="${DESKFLOW_VERSION}+${sha}" \
             -DPACKAGE_VERSION_LABEL="${DESKFLOW_VERSION}" \
             -DDESKFLOW_BUILD_TAG="${DESKFLOW_BUILD_TAG}" \
             -DQt6_DIR=/opt/qt/6.8.3/gcc_64/lib/cmake/Qt6
@@ -95,7 +103,7 @@ jobs:
           # -q: a match is one enormous "line" because the strings are not newline-terminated.
           grep -a -q -F 'stack-failover' "$core"
           grep -a -q -F 'ReleaseAt half-monitor inset + travel edge prefer' "$core"
-          grep -a -q -F '1.27.1.12' "$core"
+          grep -a -q -F '1.27.1.12+' "$core"
           grep -a -q -F 'stack %s+%s' "$core"
           grep -a -q -F 'stack-failover' "$gui"
           grep -a -q -F '1.27.1.12' "$gui"
