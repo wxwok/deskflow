@@ -89,14 +89,25 @@ jobs:
       - name: Check version strings
         run: |
           core=$(find build -name deskflow-core -type f | head -1)
-          gui=$(find build -name deskflow -type f ! -name '*.so' | head -1)
+          gui=$(find build -type f -name deskflow | head -1)
           test -n "$core"
-          grep -a -F 'stack-failover' "$core"
-          grep -a -F 'ReleaseAt half-monitor inset + travel edge prefer' "$core"
-          grep -a -F '1.27.1.12' "$core"
-          grep -a -F 'stack %s+%s' "$core"
-          grep -a -F 'stack-failover' "$gui"
-          grep -a -F 'ReleaseAt half-monitor inset + travel edge prefer' "$gui"
+          test -n "$gui"
+          # -q: a match is one enormous "line" because the strings are not newline-terminated.
+          grep -a -q -F 'stack-failover' "$core"
+          grep -a -q -F 'ReleaseAt half-monitor inset + travel edge prefer' "$core"
+          grep -a -q -F '1.27.1.12' "$core"
+          grep -a -q -F 'stack %s+%s' "$core"
+          grep -a -q -F 'stack-failover' "$gui"
+          grep -a -q -F '1.27.1.12' "$gui"
+          # The GUI startup sentence is a QStringLiteral, stored as UTF-16.
+          python3 - "$gui" <<'PY'
+          import sys
+          data = open(sys.argv[1], "rb").read()
+          phrase = "ReleaseAt half-monitor inset + travel edge prefer"
+          if phrase.encode() not in data and phrase.encode("utf-16le") not in data:
+              sys.exit("GUI binary is missing the ReleaseAt marker")
+          print("version markers ok")
+          PY
 
       - name: Bundle deb
         run: |
