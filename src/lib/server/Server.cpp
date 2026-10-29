@@ -11,6 +11,7 @@
 #include "base/IEventQueue.h"
 #include "base/Log.h"
 #include "common/Settings.h"
+#include "common/VersionInfo.h"
 #include "deskflow/AppUtil.h"
 #include "deskflow/Computer.h"
 #include "deskflow/DeskflowException.h"
@@ -39,6 +40,15 @@
 #include <ctime>
 
 using namespace deskflow::server;
+
+namespace {
+
+void logStack(const std::string &detail)
+{
+  LOG_INFO("stack %s+%s: %s", kVersion, kVersionGitSha, detail.c_str());
+}
+
+} // namespace
 
 //
 // Server
@@ -257,6 +267,10 @@ bool Server::setConfig(const ServerConfig &config)
     sendOptions(client);
   }
 
+  if (m_active != nullptr) {
+    retargetStackedLayer(getName(m_active), "layout changed", false);
+  }
+
   return true;
 }
 
@@ -295,6 +309,9 @@ void Server::adoptClient(BaseClientProxy *client)
   if (m_activeSaver != nullptr) {
     client->screensaver(true);
   }
+
+  // A higher stacked layer takes the pointer as soon as it is connected.
+  retargetStackedLayer(getName(client), "connected", false);
 
   // send notification
   auto *info = new Server::ComputerConnectedInfo(getName(client));
@@ -453,7 +470,7 @@ int32_t Server::getJumpZoneSize(const BaseClientProxy *client) const
   }
 }
 
-void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool forScreensaver)
+void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool forScreensaver, bool notifyLeave)
 {
   assert(dst != nullptr);
 
@@ -506,6 +523,7 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
   // record new position
   m_x = x;
   m_y = y;
+  m_stackCursorValid = true;
   m_xDelta = 0;
   m_yDelta = 0;
   m_xDelta2 = 0;
@@ -515,8 +533,9 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
   // since that's a waste of time we skip that and just warp the
   // mouse.
   if (m_active != dst) {
-    // leave active computer
-    if (!m_active->leave()) {
+    // leave active computer. A computer that has already disconnected
+    // must not be asked to leave; its socket is going away.
+    if (notifyLeave && !m_active->leave()) {
       // cannot leave computer
       LOG_WARN("can't leave computer");
       return;
@@ -925,6 +944,10 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
 
 bool Server::switchByLayout(const deskflow::MonitorCrossing &crossing, int32_t xActive, int32_t yActive)
 {
+  if (m_config != nullptr && m_config->isComputerDisabled(crossing.computer)) {
+    LOG_WARN("not switching to disabled computer \"%s\"", crossing.computer.c_str());
+    return false;
+  }
   auto *destination = clientByCanonicalName(crossing.computer);
   if (destination == nullptr || destination == m_active) {
     return false;
@@ -953,7 +976,10 @@ void Server::rebuildMonitorLayout()
         monitors = placement.monitors;
       }
       const auto canonical = getName(client);
-      m_monitorLayout.setComputer(canonical, placement.originX, placement.originY, std::move(monitors));
+      const bool enabled = m_config == nullptr || !m_config->isComputerDisabled(canonical);
+      m_monitorLayout.setComputer(
+          canonical, placement.originX, placement.originY, std::move(monitors), enabled, placement.z
+      );
     }
   }
 
@@ -1005,6 +1031,140 @@ BaseClientProxy *Server::clientByCanonicalName(const std::string &name) const
     }
   }
   return nullptr;
+}
+
+bool Server::layoutGlobal(const std::string &name, int32_t x, int32_t y, int32_t &globalX, int32_t &globalY) const
+{
+  if (m_config == nullptr) {
+    return false;
+  }
+  const auto placement = m_config->monitorPlacements().find(name);
+  if (placement == m_config->monitorPlacements().end()) {
+    return false;
+  }
+  globalX = placement->second.originX + x;
+  globalY = placement->second.originY + y;
+  return true;
+}
+
+std::vector<deskflow::StackCandidate> Server::stackCandidatesAt(int32_t globalX, int32_t globalY) const
+{
+  std::vector<deskflow::StackCandidate> candidates;
+  for (const auto &member : m_monitorLayout.stackMembersAt(globalX, globalY)) {
+    deskflow::StackCandidate candidate;
+    candidate.name = member.name;
+    candidate.z = member.z;
+    candidate.order = member.order;
+    candidate.x = member.x;
+    candidate.y = member.y;
+    if (clientByCanonicalName(member.name) == nullptr) {
+      candidate.availability = deskflow::StackAvailability::Disconnected;
+    } else if (!member.enabled || (m_config != nullptr && m_config->isComputerDisabled(member.name))) {
+      candidate.availability = deskflow::StackAvailability::Unreachable;
+    } else {
+      candidate.availability = deskflow::StackAvailability::Available;
+    }
+    candidates.push_back(std::move(candidate));
+  }
+
+  if (m_config == nullptr) {
+    return candidates;
+  }
+
+  // Computers that are configured but not in the live layout (disconnected, or
+  // not yet placed) still occupy their z-order so a drop can name them.
+  int extraOrder = -1;
+  for (const auto &[name, placement] : m_config->monitorPlacements()) {
+    deskflow::StackAvailability availability = deskflow::StackAvailability::Disconnected;
+    if (m_config->isComputerDisabled(name)) {
+      availability = deskflow::StackAvailability::Unreachable;
+    } else if (clientByCanonicalName(name) != nullptr) {
+      availability = deskflow::StackAvailability::Unreachable;
+    }
+    deskflow::appendStackCandidate(
+        candidates, name, placement.z, extraOrder, availability, placement.originX, placement.originY,
+        placement.monitors, globalX, globalY
+    );
+    --extraOrder;
+  }
+  return candidates;
+}
+
+bool Server::retargetStackedLayer(const std::string &trigger, const char *cause, bool currentIsDead)
+{
+  if (m_stackRetargeting || m_config == nullptr || !m_monitorLayout.enabled() || m_active == nullptr ||
+      cause == nullptr) {
+    return false;
+  }
+  if (m_activeSaver != nullptr) {
+    return false;
+  }
+
+  m_stackRetargeting = true;
+  struct ClearRetarget
+  {
+    bool &flag;
+    ~ClearRetarget()
+    {
+      flag = false;
+    }
+  } clear{m_stackRetargeting};
+
+  const std::string previous = getName(m_active);
+  const std::string event = std::string("\"") + trigger + "\" " + cause;
+  if (!m_stackCursorValid) {
+    if (currentIsDead) {
+      logStack(event + ", pointer position is unknown; fall back from \"" + previous + "\"");
+    }
+    return false;
+  }
+
+  int32_t globalX = 0;
+  int32_t globalY = 0;
+  if (!layoutGlobal(previous, m_x, m_y, globalX, globalY)) {
+    return false;
+  }
+
+  auto candidates = stackCandidatesAt(globalX, globalY);
+  if (currentIsDead) {
+    for (auto &candidate : candidates) {
+      if (candidate.availability == deskflow::StackAvailability::Available &&
+          deskflow::string::CaselessCmp::equal(candidate.name, trigger)) {
+        candidate.availability = deskflow::StackAvailability::Disconnected;
+      }
+    }
+  }
+  const auto decision = deskflow::chooseActiveStackLayer(std::move(candidates));
+  const bool switchNeeded = !decision.active.empty() && decision.active != previous;
+  if (!currentIsDead && isLockedToComputer()) {
+    if (switchNeeded) {
+      logStack(
+          event + ", keep \"" + previous + "\" because the cursor is locked (would activate \"" + decision.active +
+          "\")"
+      );
+    }
+    return false;
+  }
+  if (!switchNeeded) {
+    if (currentIsDead) {
+      logStack(deskflow::describeStackActivation(event, previous, decision));
+    }
+    return false;
+  }
+
+  auto *destination = clientByCanonicalName(decision.active);
+  if (destination == nullptr || destination == m_active) {
+    logStack(event + ", \"" + decision.active + "\" should receive the pointer but is not connected");
+    return false;
+  }
+
+  logStack(deskflow::describeStackActivation(event, previous, decision));
+  switchComputer(destination, decision.x, decision.y, false, !currentIsDead);
+  if (m_active != destination) {
+    logStack(event + ", could not leave \"" + previous + "\" for \"" + decision.active + "\"");
+    return false;
+  }
+  return true;
 }
 
 void Server::avoidJumpZone(const BaseClientProxy *dst, Direction dir, int32_t &x, int32_t &y) const
@@ -1387,10 +1547,8 @@ void Server::processOptions()
     } else if (id == kOptionClipboardSharingSize) {
       if (value <= 0) {
         m_maximumClipboardSize = 0;
-        LOG_INFO(
-            "clipboard sharing is disabled because the "
-            "maximum shared clipboard size is set to 0"
-        );
+        LOG_INFO("clipboard sharing is disabled because the "
+                 "maximum shared clipboard size is set to 0");
       } else {
         m_maximumClipboardSize = static_cast<size_t>(value);
       }
@@ -1432,6 +1590,8 @@ void Server::handleShapeChanged(BaseClientProxy *client)
       onMouseMoveSecondary(0, 0);
     }
   }
+
+  retargetStackedLayer(getName(client), "monitors changed", false);
 }
 
 void Server::handleClipboardGrabbed(const Event &event, BaseClientProxy *grabber)
@@ -1617,6 +1777,11 @@ void Server::handleSwitchToComputerEvent(const Event &event)
 {
   const auto *info = static_cast<SwitchToComputerInfo *>(event.getData());
 
+  if (m_config != nullptr && m_config->isComputerDisabled(info->m_computer)) {
+    LOG_WARN("ignoring switchToScreen(%s): computer is disabled", info->m_computer.c_str());
+    return;
+  }
+
   ClientList::const_iterator index = m_clients.find(info->m_computer);
   if (index == m_clients.end()) {
     LOG_VERBOSE("computer \"%s\" not active", info->m_computer.c_str());
@@ -1736,6 +1901,9 @@ void Server::handleLockCursorToComputerEvent(const Event &event)
     m_primaryClient->reconfigure(getActivePrimarySides());
     if (!isLockedToComputerServer()) {
       stopRelativeMoves();
+    }
+    if (!m_lockedToComputer && m_active != nullptr) {
+      retargetStackedLayer(getName(m_active), "unlocked", false);
     }
   }
 }
@@ -1932,8 +2100,13 @@ bool Server::onMouseMovePrimary(int32_t x, int32_t y)
   // save position
   m_x = x;
   m_y = y;
+  m_stackCursorValid = true;
 
   if (m_monitorLayout.enabled()) {
+    if (const auto stacked = m_monitorLayout.stackTarget(getName(m_active), x, y);
+        stacked.has_value() && switchByLayout(*stacked, x, y)) {
+      return true;
+    }
     std::optional<deskflow::MonitorCrossing> horizontal;
     std::optional<deskflow::MonitorCrossing> vertical;
     m_monitorLayout.hitEdges(getName(m_active), x, y, getJumpZoneSize(m_active), horizontal, vertical);
@@ -2073,6 +2246,7 @@ void Server::onMouseMoveSecondary(int32_t dx, int32_t dy)
   // accumulate motion
   m_x += dx;
   m_y += dy;
+  m_stackCursorValid = true;
 
   if (m_monitorLayout.enabled()) {
     int32_t clampX = m_x;
@@ -2370,28 +2544,34 @@ void Server::removeOldClient(BaseClientProxy *client)
 void Server::forceLeaveClient(const BaseClientProxy *client)
 {
   if (const auto *active = (m_activeSaver != nullptr) ? m_activeSaver : m_active; active == client) {
-    // record new position (center of primary computer)
-    m_primaryClient->getCursorCenter(m_x, m_y);
+    // A stacked layer that drops gives the pointer to the next available
+    // layer at the same point. The screen saver keeps the old jump.
+    const bool failedOver = m_activeSaver == nullptr && retargetStackedLayer(getName(client), "disconnected", true);
+    if (!failedOver) {
+      // record new position (center of primary computer)
+      m_primaryClient->getCursorCenter(m_x, m_y);
 
-    // stop waiting to switch to this client
-    if (active == m_switchComputer) {
-      stopSwitch();
-    }
+      // stop waiting to switch to this client
+      if (active == m_switchComputer) {
+        stopSwitch();
+      }
 
-    // don't notify active computer since it has probably already
-    // disconnected.
-    LOG_INFO(
-        "forced return to \"%s\" from \"%s\" at %d,%d", getName(m_primaryClient).c_str(), getName(active).c_str(), m_x,
-        m_y
-    );
+      // don't notify active computer since it has probably already
+      // disconnected.
+      LOG_INFO(
+          "forced return to \"%s\" from \"%s\" at %d,%d", getName(m_primaryClient).c_str(), getName(active).c_str(),
+          m_x, m_y
+      );
 
-    // cut over
-    m_active = m_primaryClient;
+      // cut over
+      m_active = m_primaryClient;
+      m_stackCursorValid = true;
 
-    // enter new computer (unless we already have because of the
-    // screen saver)
-    if (m_activeSaver == nullptr) {
-      m_primaryClient->enter(m_x, m_y, m_seqNum, m_primaryClient->getToggleMask(), false);
+      // enter new computer (unless we already have because of the
+      // screen saver)
+      if (m_activeSaver == nullptr) {
+        m_primaryClient->enter(m_x, m_y, m_seqNum, m_primaryClient->getToggleMask(), false);
+      }
     }
   }
 

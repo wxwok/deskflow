@@ -88,6 +88,9 @@ void ServerConfig::commit()
   }
   settings().endGroup();
 
+  const auto hadConnectedClients = settings().contains(QStringLiteral("connectedClients"));
+  const auto connectedClients = settings().value(QStringLiteral("connectedClients")).toStringList();
+
   settings().remove("");
 
   settings().beginWriteArray("screens");
@@ -117,6 +120,7 @@ void ServerConfig::commit()
     settings().setValue("name", computer.name);
     settings().setValue("originX", computer.originX);
     settings().setValue("originY", computer.originY);
+    settings().setValue("z", computer.z);
     settings().beginWriteArray("monitors");
     for (int monitorIndex = 0; monitorIndex < computer.monitors.size(); ++monitorIndex) {
       settings().setArrayIndex(monitorIndex);
@@ -136,6 +140,10 @@ void ServerConfig::commit()
     settings().setValue(it.key(), it.value());
   }
   settings().endGroup();
+
+  if (hadConnectedClients) {
+    settings().setValue(QStringLiteral("connectedClients"), connectedClients);
+  }
 
   settings().endGroup();
 }
@@ -182,6 +190,7 @@ void ServerConfig::recall()
     computer.name = settings().value("name").toString();
     computer.originX = settings().value("originX").toInt();
     computer.originY = settings().value("originY").toInt();
+    computer.z = settings().value("z").toInt();
     const int numMonitors = settings().beginReadArray("monitors");
     for (int monitorIndex = 0; monitorIndex < numMonitors; ++monitorIndex) {
       settings().setArrayIndex(monitorIndex);
@@ -227,12 +236,16 @@ QTextStream &operator<<(QTextStream &outStream, const ServerConfig &config)
 {
   outStream << "section: links" << Qt::endl;
 
+  const auto disabled = [](const QString &name) {
+    return Settings::value(Settings::Computer::Disabled.arg(name)).toBool();
+  };
+
   for (int i = 0; const auto &computer : config.computers()) {
-    if (!computer.isNull()) {
+    if (!computer.isNull() && !disabled(computer.name())) {
       outStream << "\t" << computer.name() << ":\n";
       for (const auto &neighbour : std::as_const(neighbourDirs)) {
         int idx = config.adjacentComputerIndex(i, neighbour.x, neighbour.y);
-        if (idx != -1 && !config.computers()[idx].isNull())
+        if (idx != -1 && !config.computers()[idx].isNull() && !disabled(config.computers()[idx].name()))
           outStream << "\t\t" << neighbour.name << " = " << config.computers()[idx].name() << Qt::endl;
       }
     }
@@ -246,6 +259,7 @@ QTextStream &operator<<(QTextStream &outStream, const ServerConfig &config)
     for (const auto &computer : config.monitorLayout()) {
       outStream << "\t" << computer.name << ":" << Qt::endl;
       outStream << "\t\torigin = " << computer.originX << ", " << computer.originY << Qt::endl;
+      outStream << "\t\tz = " << computer.z << Qt::endl;
       for (const auto &monitor : computer.monitors) {
         outStream << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width
                   << ", " << monitor.height << Qt::endl;

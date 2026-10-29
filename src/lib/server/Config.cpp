@@ -9,7 +9,9 @@
 #include "server/Config.h"
 
 #include "base/IEventQueue.h"
+#include "base/Log.h"
 #include "common/KeyboardModifier.h"
+#include "common/Settings.h"
 #include "deskflow/KeyMap.h"
 #include "deskflow/KeyTypes.h"
 #include "deskflow/OptionTypes.h"
@@ -120,6 +122,10 @@ bool Config::addComputer(const std::string &name)
   if (superModifier.isEmpty())
     superModifier = kModifierNameSuper;
   addOption(name, kOptionModifierMapForSuper, modifierIDValueFromString(superModifier));
+
+  if (Settings::value(Settings::Computer::Disabled.arg(computer)).toBool()) {
+    m_disabled.insert(name);
+  }
 
   return true;
 }
@@ -294,6 +300,15 @@ bool Config::isComputer(const std::string &name) const
   return m_nameToCanonicalName.contains(name);
 }
 
+bool Config::isComputerDisabled(const std::string &name) const
+{
+  const auto canonical = getCanonicalName(name);
+  if (!canonical.empty()) {
+    return m_disabled.contains(canonical);
+  }
+  return m_disabled.contains(name);
+}
+
 bool Config::isCanonicalName(const std::string &name) const
 {
   return (!name.empty() && CaselessCmp::equal(getCanonicalName(name), name));
@@ -443,6 +458,10 @@ bool Config::operator==(const Config &x) const
   }
 
   if (m_monitorPlacements != x.m_monitorPlacements) {
+    return false;
+  }
+
+  if (m_disabled != x.m_disabled) {
     return false;
   }
 
@@ -630,6 +649,12 @@ void Config::readSectionOptions(ConfigReadContext &s)
       }
     }
 
+    if (s.ruleSkipped()) {
+      LOG_WARN("skipped hotkey on line %d", s.getLineNumber());
+      s.resetRuleSkip();
+      continue;
+    }
+
     // add rule
     m_inputFilter.addFilterRule(rule);
   }
@@ -712,6 +737,10 @@ void Config::readSectionLinks(ConfigReadContext &s)
       if (!isComputer(dstComputer)) {
         throw ServerConfigReadException(s, "unknown computer name \"%{1}\"", dstComputer);
       }
+      if (isComputerDisabled(computer) || isComputerDisabled(dstComputer)) {
+        LOG_WARN("skipping link from \"%s\" to \"%s\": computer is disabled", computer.c_str(), dstComputer.c_str());
+        continue;
+      }
       if (!connect(
               computer, dir, srcInterval.first, srcInterval.second, dstComputer, dstInterval.first, dstInterval.second
           )) {
@@ -723,7 +752,7 @@ void Config::readSectionLinks(ConfigReadContext &s)
 }
 
 void Config::setMonitorPlacement(
-    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors, int32_t z
 )
 {
   std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
@@ -731,7 +760,7 @@ void Config::setMonitorPlacement(
     m_monitorPlacements.erase(name);
     return;
   }
-  m_monitorPlacements.insert_or_assign(name, MonitorPlacement{originX, originY, std::move(monitors)});
+  m_monitorPlacements.insert_or_assign(name, MonitorPlacement{originX, originY, std::move(monitors), z});
 }
 
 void Config::clearMonitorLayout()
@@ -786,14 +815,16 @@ void Config::readSectionLayout(ConfigReadContext &s)
   std::string computer;
   int32_t originX = 0;
   int32_t originY = 0;
+  int32_t z = 0;
   std::vector<deskflow::MonitorRect> monitors;
   const auto commit = [&]() {
     if (!computer.empty()) {
-      setMonitorPlacement(computer, originX, originY, monitors);
+      setMonitorPlacement(computer, originX, originY, monitors, z);
     }
     monitors.clear();
     originX = 0;
     originY = 0;
+    z = 0;
   };
 
   while (s.readLine(line)) {
@@ -856,6 +887,10 @@ void Config::readSectionLayout(ConfigReadContext &s)
         monitorName += parts[index];
       }
       monitors.push_back(deskflow::MonitorRect{monitorName, x, y, width, height});
+    } else if (key == "z") {
+      if (!parseInt(value, z)) {
+        throw ServerConfigReadException(s, "invalid layout z");
+      }
     } else {
       throw ServerConfigReadException(s, "unknown layout key \"%{1}\"", key);
     }
@@ -990,13 +1025,21 @@ void Config::parseAction(
     }
 
     std::string computer = args[0];
-    if (isComputer(computer)) {
+    if (computer.empty()) {
+      action = new InputFilter::SwitchToComputerAction(m_events, computer);
+    } else if (!isComputer(computer)) {
+      LOG_WARN("skipping hotkey switchToScreen(%s): unknown computer", computer.c_str());
+      s.skipRule();
+      return;
+    } else {
       computer = getCanonicalName(computer);
-    } else if (!computer.empty()) {
-      throw ServerConfigReadException(s, "unknown computer name in switchToScreen");
+      if (isComputerDisabled(computer)) {
+        LOG_WARN("skipping hotkey switchToScreen(%s): computer is disabled", computer.c_str());
+        s.skipRule();
+        return;
+      }
+      action = new InputFilter::SwitchToComputerAction(m_events, computer);
     }
-
-    action = new InputFilter::SwitchToComputerAction(m_events, computer);
   }
 
   else if (name == "switchInDirection") {
@@ -1423,6 +1466,7 @@ std::ostream &operator<<(std::ostream &s, const Config &config)
     for (const auto &[name, placement] : config.m_monitorPlacements) {
       s << "\t" << name << ":" << std::endl;
       s << "\t\torigin = " << placement.originX << ", " << placement.originY << std::endl;
+      s << "\t\tz = " << placement.z << std::endl;
       for (const auto &monitor : placement.monitors) {
         s << "\t\tmonitor = " << monitor.name << ", " << monitor.x << ", " << monitor.y << ", " << monitor.width << ", "
           << monitor.height << std::endl;

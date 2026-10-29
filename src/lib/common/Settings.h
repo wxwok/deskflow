@@ -147,6 +147,8 @@ public:
     inline static const auto SwitchCornerBottomRight = QStringLiteral("computer_%1/switchCornerBottomRight");
     inline static const auto WeakX11Focus = QStringLiteral("computer_%1/weakX11Focus");
     inline static const auto XtestIsXineramaUnaware = QStringLiteral("computer_%1/xtestIsXineramaUnaware");
+    // Absent or false means the computer participates in pointer switching.
+    inline static const auto Disabled = QStringLiteral("computer_%1/disabled");
   };
 
   // Track Removed keys to make upgrading config easier
@@ -168,6 +170,7 @@ public:
     inline static const auto RelativeMouseMoves = QStringLiteral("internalConfig/relativeMouseMoves");
     inline static const auto Protocol = QStringLiteral("internalConfig/protocol");
     inline static const auto ClipboardSharingSize = QStringLiteral("internalConfig/clipboardSharingSize");
+    inline static const auto ConnectedClients = QStringLiteral("internalConfig/connectedClients");
   };
 
   // Enums types used in settings
@@ -219,6 +222,8 @@ public:
   static void removeUnknownComputers(const QStringList &knownComputers);
   static QVariant computerDefaults(const QString &key);
   static QStringList knownComputers();
+  //! The QSettings object Settings::value reads. Layout writes update this and the proxy.
+  static QSettings &store();
 
 Q_SIGNALS:
   void settingsChanged(const QString key);

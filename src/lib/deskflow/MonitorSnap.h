@@ -320,8 +320,8 @@ inline MonitorSnapResult snapMonitorPlacement(
   }
 
   MonitorSnapResult result;
+  // Overlap is a stack, not a collision. Snapping off keeps the position that was asked for.
   if (!enableSnap) {
-    separateGroup(moving, stationary, result.dx, result.dy);
     return result;
   }
 
@@ -395,9 +395,6 @@ inline MonitorSnapResult snapMonitorPlacement(
   int64_t chosenAbsX = 0;
   for (const auto &xOption : xOptions) {
     for (const auto &yOption : yOptions) {
-      if (groupOverlaps(moving, stationary, xOption.delta, yOption.delta)) {
-        continue;
-      }
       const int snaps = (xOption.snap ? 1 : 0) + (yOption.snap ? 1 : 0);
       const int64_t distance = snapAbs(xOption.delta) + snapAbs(yOption.delta);
       const int adjacency = (xOption.adjacency ? 1 : 0) + (yOption.adjacency ? 1 : 0);
@@ -429,14 +426,6 @@ inline MonitorSnapResult snapMonitorPlacement(
     }
   }
 
-  if (chosen) {
-    return result;
-  }
-
-  separateGroup(moving, stationary, result.dx, result.dy);
-  result.snappedX = false;
-  result.snappedY = false;
-  result.guides.clear();
   return result;
 }
 

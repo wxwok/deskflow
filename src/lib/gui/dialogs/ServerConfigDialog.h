@@ -32,6 +32,7 @@ public:
   ~ServerConfigDialog() override;
   bool addClient(const QString &clientName);
   void applyReportedGeometry(const QString &computer, const QString &monitors);
+  void refreshMonitorDiscovery();
   void message(const QString &message)
   {
     m_message = message;
