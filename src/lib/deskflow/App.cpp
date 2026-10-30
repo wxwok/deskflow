@@ -11,8 +11,10 @@
 #include "arch/Arch.h"
 #include "base/Log.h"
 #include "base/LogOutputters.h"
+#include "common/Constants.h"
 #include "common/ExitCodes.h"
 #include "common/Settings.h"
+#include "common/VersionInfo.h"
 #include "deskflow/DeskflowException.h"
 #include "mt/ThreadException.h"
 
@@ -157,6 +159,14 @@ void App::initApp()
 
   // setup file logging after parsing args
   setupFileLogging();
+
+  // After the file logger exists, so this line is in the log the user reads.
+  // kVersionFull is DESKFLOW_VERSION_FULL (semantic version + git short hash).
+  // kVersionBuildTag is DESKFLOW_BUILD_TAG, so two builds of one number differ.
+  LOG_INFO(
+      "%s version %s tag=%s (ReleaseAt half-monitor inset + travel edge prefer)", kCoreBinName, kVersionFull,
+      kVersionBuildTag
+  );
 
   // load configuration
   loadConfig();

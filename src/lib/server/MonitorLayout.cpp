@@ -72,9 +72,8 @@ deskflow::StackDecision deskflow::chooseActiveStackLayer(std::vector<StackCandid
   return decision;
 }
 
-std::string deskflow::describeStackActivation(
-    const std::string &event, const std::string &previous, const StackDecision &decision
-)
+std::string
+deskflow::describeStackActivation(const std::string &event, const std::string &previous, const StackDecision &decision)
 {
   std::ostringstream out;
   out << event;
@@ -491,11 +490,17 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
 {
   clampX = toX;
   clampY = toY;
-  if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
-    return stacked;
-  }
   const auto all = globals();
+
+  // Still on this computer: only switch via z-order peek into a higher stack.
+  // Do not consult stackTarget for points that have already left our monitors.
+  // That path returns NoDirection and skips primary ReleaseAt insets, which
+  // re-triggers portal barriers (sp7 right-edge enter, then exit onto work
+  // output-3's concave bottom, bouncing to sp7's top-right).
   if (monitorAt(all, computer, toX, toY) != nullptr) {
+    if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+      return stacked;
+    }
     return std::nullopt;
   }
 
@@ -504,6 +509,9 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
   for (int guard = 0; guard < 8; ++guard) {
     const GlobalMonitor *monitor = monitorAt(all, computer, x, y);
     if (monitor == nullptr) {
+      if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+        return stacked;
+      }
       clampToComputer(computer, clampX, clampY);
       return std::nullopt;
     }
@@ -614,11 +622,20 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
       }
     }
 
+    // No abutting remote neighbour on this side (common for stacked overlap
+    // that shares area but not an edge). Drop through z-order instead.
+    if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+      return stacked;
+    }
+
     clampX = clampTo(toX, local.x, local.width);
     clampY = clampTo(toY, local.y, local.height);
     return std::nullopt;
   }
 
+  if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+    return stacked;
+  }
   clampToComputer(computer, clampX, clampY);
   return std::nullopt;
 }

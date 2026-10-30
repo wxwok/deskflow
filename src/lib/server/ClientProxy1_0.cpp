@@ -10,9 +10,11 @@
 
 #include "base/IEventQueue.h"
 #include "base/Log.h"
+#include "common/Settings.h"
 #include "deskflow/DeskflowException.h"
 #include "deskflow/ProtocolUtil.h"
 #include "io/IStream.h"
+#include "server/ActiveClientWatch.h"
 
 #include <cstring>
 
@@ -41,6 +43,7 @@ ClientProxy1_0::ClientProxy1_0(const std::string &name, deskflow::IStream *strea
   m_events->addHandler(EventTypes::Timer, this, [this](const auto &) { handleFlatline(); });
 
   setHeartbeatRate(kHeartRate, kHeartRate * kHeartBeatsUntilDeath);
+  noteClientMessage();
 
   LOG_VERBOSE("querying client \"%s\" info", getName().c_str());
   ProtocolUtil::writef(getStream(), kMsgQInfo);
@@ -102,6 +105,14 @@ void ClientProxy1_0::resetHeartbeatRate()
 
 void ClientProxy1_0::setHeartbeatRate(double, double alarm)
 {
+  // Keep-alives are sent every few seconds and the historical flatline was
+  // three of those (9s). Cap that to the configured silence limit so a client
+  // that vanishes without a TCP FIN cannot hold the pointer for longer.
+  const double cap =
+      deskflow::clampActiveClientTimeoutSeconds(Settings::value(Settings::Server::ActiveClientTimeout).toInt());
+  if (cap > 0.0 && alarm > cap) {
+    alarm = cap;
+  }
   m_heartbeatAlarm = alarm;
 }
 
@@ -117,6 +128,9 @@ void ClientProxy1_0::handleData()
       disconnect();
       return;
     }
+
+    // Any inbound message, including keep-alives, proves the client is alive.
+    noteClientMessage();
 
     // parse message
     try {
@@ -200,6 +214,16 @@ void ClientProxy1_0::handleFlatline()
   // didn't get a heartbeat fast enough.  assume client is dead.
   LOG_DEBUG("client \"%s\" is dead", getName().c_str());
   disconnect();
+}
+
+void ClientProxy1_0::noteClientMessage()
+{
+  m_lastMessage = std::chrono::steady_clock::now();
+}
+
+double ClientProxy1_0::secondsSinceLastMessage() const
+{
+  return std::chrono::duration<double>(std::chrono::steady_clock::now() - m_lastMessage).count();
 }
 
 bool ClientProxy1_0::getClipboard(ClipboardID id, IClipboard *clipboard) const

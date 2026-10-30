@@ -20,6 +20,7 @@ private Q_SLOTS:
   void snapAdjacencyAndAlignment();
   void snapAllowsOverlap();
   void switchEdgeSegments();
+  void abuttingExitPrefersEdgeTravelOverStack();
   void stackTopReceivesTheOverlap();
   void stackFailoverDropsAndRestores();
   void stackFailoverOutsideTheLiveLayout();

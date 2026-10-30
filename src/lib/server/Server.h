@@ -339,6 +339,7 @@ private:
   void handleMotionSecondaryEvent(const Event &event);
   void handleWheelEvent(const Event &event);
   void handleSwitchWaitTimeout();
+  void handleActiveClientWatch();
   void handleClientDisconnected(BaseClientProxy *client);
   void handleClientCloseTimeout(BaseClientProxy *client);
   void handleSwitchToComputerEvent(const Event &event);
@@ -382,6 +383,8 @@ private:
   // force the cursor off of \p client
   void forceLeaveClient(const BaseClientProxy *client);
 
+  double activeClientTimeoutSeconds() const;
+
 private:
   class ClipboardInfo
   {
@@ -417,6 +420,10 @@ private:
   BaseClientProxy *m_switchComputer = nullptr;
   double m_switchWaitDelay = 0.0;
   EventQueueTimer *m_switchWaitTimer = nullptr;
+  EventQueueTimer *m_activeClientWatchTimer = nullptr;
+  // True after a watchdog return has started, until the pointer is home.
+  // Stops a reconnect during that window from starting a second return.
+  bool m_forcedReturn = false;
 
   // delay for double-tap computer switching
   double m_switchTwoTapDelay = 0.0;

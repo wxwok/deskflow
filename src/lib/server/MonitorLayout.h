@@ -79,7 +79,9 @@ in front. Where monitors overlap, the highest computer that is connected
 and available receives the pointer. A computer underneath is used only
 when every computer above it is missing, disconnected, or unreachable,
 and a higher computer takes the pointer back when it becomes available
-again. Switching also happens where a monitor edge is not continued by
+again. Leaving across a shared edge prefers that edge over a stack peek,
+so the crossing stays directional and the primary ReleaseAt inset still
+runs. Switching also happens where a monitor edge is not continued by
 another monitor of the same computer and does overlap a monitor of a
 different computer.
 

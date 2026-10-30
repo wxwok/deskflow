@@ -10,6 +10,7 @@
 
 #include "base/IEventQueue.h"
 #include "base/Log.h"
+#include "common/Settings.h"
 #include "common/VersionInfo.h"
 #include "deskflow/AppUtil.h"
 #include "deskflow/Computer.h"
@@ -21,6 +22,7 @@
 #include "deskflow/StreamChunker.h"
 #include "deskflow/ipc/CoreIpc.h"
 #include "net/TCPSocket.h"
+#include "server/ActiveClientWatch.h"
 #include "server/ClientListener.h"
 #include "server/ClientProxy.h"
 #include "server/ClientProxyUnknown.h"
@@ -132,6 +134,13 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Com
     m_primaryClient->fakeInputEnd();
   });
 
+  // Checked once a second. Only the computer that currently has the pointer
+  // is eligible, and a return already in progress is left alone.
+  m_activeClientWatchTimer = m_events->newTimer(1.0, nullptr);
+  m_events->addHandler(EventTypes::Timer, m_activeClientWatchTimer, [this](const auto &) {
+    handleActiveClientWatch();
+  });
+
   // add connection
   addClient(m_primaryClient);
 
@@ -164,6 +173,12 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Com
 
 Server::~Server()
 {
+  if (m_activeClientWatchTimer != nullptr) {
+    m_events->removeHandler(EventTypes::Timer, m_activeClientWatchTimer);
+    m_events->deleteTimer(m_activeClientWatchTimer);
+    m_activeClientWatchTimer = nullptr;
+  }
+
   // remove event handlers and timers
   using enum EventTypes;
   m_events->removeHandler(KeyStateKeyDown, m_inputFilter);
@@ -496,6 +511,10 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
 
   assert(m_active != nullptr);
 
+  // A deliberate switch is not the watchdog's return. Clear the guard so the
+  // computer we land on is watched again.
+  m_forcedReturn = false;
+
   LOG_INFO("switch from \"%s\" to \"%s\" at %d,%d", getName(m_active).c_str(), getName(dst).c_str(), x, y);
 
   // stop waiting to switch
@@ -823,20 +842,9 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     arrival = Top;
     break;
   case NoDirection:
-    return;
-  }
-
-  const int32_t along = (arrival == Left || arrival == Right) ? y : x;
-  const int32_t position = (arrival == Left || arrival == Right) ? x : y;
-  bool onSwitchEdge = false;
-  for (const auto &edge : m_monitorLayout.switchEdges(getName(dst))) {
-    if (edge.side == arrival && edge.position == position && edge.contains(along)) {
-      onSwitchEdge = true;
-      break;
-    }
-  }
-  if (!onSwitchEdge) {
-    return;
+    // stackTarget crossings have no side; still inset below from every nearby
+    // switch barrier so portal ReleaseAt cannot re-grab.
+    break;
   }
 
   const deskflow::MonitorRect *hit = nullptr;
@@ -850,21 +858,87 @@ void Server::avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t
     return;
   }
 
-  switch (arrival) {
-  case Left:
-    x = std::min(hit->right() - 1, x + zone);
-    break;
-  case Right:
-    x = std::max(hit->x, x - zone);
-    break;
-  case Top:
-    y = std::min(hit->bottom() - 1, y + zone);
-    break;
-  case Bottom:
-    y = std::max(hit->y, y - zone);
-    break;
-  case NoDirection:
-    break;
+  // Portal InputCapture re-grabs when ReleaseAt lands near a switch barrier.
+  // crossAt already insets by overshoot, so the point is usually no longer
+  // exactly on edge.position — match a near-edge band, then push well inside.
+  // A one-pixel jump zone is nowhere near enough for concave bottoms (e.g.
+  // work output-3 above a stacked neighbour): ~60px still bounced in testing.
+  // Mutter re-grabs ReleaseAt on concave bottoms even ~480px in (output-3
+  // above stacked sp7). Half-monitor inset held in testing; quarter did not.
+  constexpr int32_t kPortalEdgeTolerance = 512;
+  constexpr int32_t kPortalMinInset = 512;
+  const int32_t halfW = std::max<int32_t>(0, (hit->width - 1) / 2);
+  const int32_t halfH = std::max<int32_t>(0, (hit->height - 1) / 2);
+  const int32_t insetX = std::max({zone, kPortalMinInset, halfW});
+  const int32_t insetY = std::max({zone, kPortalMinInset, halfH});
+
+  auto edgeMatches = [&](const deskflow::EdgeSpan &edge, Direction side) {
+    if (edge.side != side) {
+      return false;
+    }
+    const int32_t along = (side == Left || side == Right) ? y : x;
+    const int32_t position = (side == Left || side == Right) ? x : y;
+    if (!edge.contains(along)) {
+      return false;
+    }
+    const int32_t dist = std::abs(edge.position - position);
+    bool insideFromEdge = false;
+    switch (side) {
+    case Left:
+      insideFromEdge = position >= edge.position;
+      break;
+    case Right:
+      insideFromEdge = position <= edge.position;
+      break;
+    case Top:
+      insideFromEdge = position >= edge.position;
+      break;
+    case Bottom:
+      insideFromEdge = position <= edge.position;
+      break;
+    case NoDirection:
+      break;
+    }
+    return insideFromEdge && dist <= kPortalEdgeTolerance;
+  };
+
+  const auto edges = m_monitorLayout.switchEdges(getName(dst));
+  auto applySide = [&](Direction side) {
+    bool matched = false;
+    for (const auto &edge : edges) {
+      if (edgeMatches(edge, side)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return;
+    }
+    switch (side) {
+    case Left:
+      x = std::min(hit->right() - 1, std::max(x, hit->x + insetX));
+      break;
+    case Right:
+      x = std::max(hit->x, std::min(x, hit->right() - 1 - insetX));
+      break;
+    case Top:
+      y = std::min(hit->bottom() - 1, std::max(y, hit->y + insetY));
+      break;
+    case Bottom:
+      y = std::max(hit->y, std::min(y, hit->bottom() - 1 - insetY));
+      break;
+    case NoDirection:
+      break;
+    }
+  };
+
+  if (arrival == NoDirection) {
+    applySide(Left);
+    applySide(Right);
+    applySide(Top);
+    applySide(Bottom);
+  } else {
+    applySide(arrival);
   }
 }
 
@@ -1473,10 +1547,8 @@ void Server::processOptions()
     } else if (id == kOptionClipboardSharingSize) {
       if (value <= 0) {
         m_maximumClipboardSize = 0;
-        LOG_INFO(
-            "clipboard sharing is disabled because the "
-            "maximum shared clipboard size is set to 0"
-        );
+        LOG_INFO("clipboard sharing is disabled because the "
+                 "maximum shared clipboard size is set to 0");
       } else {
         m_maximumClipboardSize = static_cast<size_t>(value);
       }
@@ -1645,6 +1717,36 @@ void Server::handleSwitchWaitTimeout()
 
   // switch computer
   switchComputer(m_switchComputer, m_switchWaitX, m_switchWaitY, false);
+}
+
+double Server::activeClientTimeoutSeconds() const
+{
+  return deskflow::clampActiveClientTimeoutSeconds(Settings::value(Settings::Server::ActiveClientTimeout).toInt());
+}
+
+void Server::handleActiveClientWatch()
+{
+  if (m_active == nullptr || m_active == m_primaryClient) {
+    m_forcedReturn = false;
+  }
+
+  BaseClientProxy *active = m_active;
+  const double timeout = activeClientTimeoutSeconds();
+  const deskflow::ActiveClientWatchInput input{
+      active != nullptr && active != m_primaryClient, m_forcedReturn,
+      active != nullptr ? active->secondsSinceLastMessage() : 0.0, timeout
+  };
+  if (deskflow::decideActiveClientWatch(input) != deskflow::ActiveClientWatchDecision::ForceReturn ||
+      active == nullptr) {
+    return;
+  }
+
+  m_forcedReturn = true;
+  LOG_INFO(
+      "active client \"%s\" has not responded for %.1f s (limit %.1f s); returning focus to \"%s\"",
+      getName(active).c_str(), input.secondsSinceLastMessage, timeout, getName(m_primaryClient).c_str()
+  );
+  closeClient(active, kMsgCClose);
 }
 
 void Server::handleClientDisconnected(BaseClientProxy *client)
@@ -2369,7 +2471,12 @@ void Server::closeClient(BaseClientProxy *client, const char *msg)
   // send message
   // FIXME -- avoid type cast (kinda hard, though)
   auto clientProxy = static_cast<ClientProxy *>(client);
-  clientProxy->close(msg);
+  try {
+    clientProxy->close(msg);
+  } catch (const std::exception &e) {
+    // A dead peer often fails the write. Still drop it and return the pointer.
+    LOG_WARN("failed to send close to \"%s\": %s", getName(client).c_str(), e.what());
+  }
 
   // install timer.  wait timeout seconds for client to close.
   double timeout = 5.0;
@@ -2451,9 +2558,9 @@ void Server::forceLeaveClient(const BaseClientProxy *client)
 
       // don't notify active computer since it has probably already
       // disconnected.
-      LOG(
-          (CLOG_INFO "jump from \"%s\" to \"%s\" at %d,%d", getName(active).c_str(), getName(m_primaryClient).c_str(),
-           m_x, m_y)
+      LOG_INFO(
+          "forced return to \"%s\" from \"%s\" at %d,%d", getName(m_primaryClient).c_str(), getName(active).c_str(),
+          m_x, m_y
       );
 
       // cut over
