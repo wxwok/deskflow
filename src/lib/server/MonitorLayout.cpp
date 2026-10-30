@@ -6,8 +6,11 @@
 
 #include "server/MonitorLayout.h"
 
+#include "base/String.h"
+
 #include <algorithm>
 #include <cstdlib>
+#include <sstream>
 
 namespace {
 
@@ -27,13 +30,123 @@ int32_t clampTo(int32_t value, int32_t origin, int32_t size)
 
 } // namespace
 
+const char *deskflow::stackAvailabilityName(StackAvailability availability)
+{
+  switch (availability) {
+  case StackAvailability::Available:
+    return "available";
+  case StackAvailability::Missing:
+    return "missing";
+  case StackAvailability::Disconnected:
+    return "disconnected";
+  case StackAvailability::Unreachable:
+    return "unreachable";
+  }
+  return "unknown";
+}
+
+deskflow::StackDecision deskflow::chooseActiveStackLayer(std::vector<StackCandidate> candidates)
+{
+  std::sort(candidates.begin(), candidates.end(), [](const StackCandidate &left, const StackCandidate &right) {
+    if (left.z != right.z) {
+      return left.z > right.z;
+    }
+    if (left.order != right.order) {
+      return left.order > right.order;
+    }
+    return left.name > right.name;
+  });
+
+  StackDecision decision;
+  for (const auto &candidate : candidates) {
+    if (decision.active.empty() && candidate.availability == StackAvailability::Available && !candidate.name.empty()) {
+      decision.active = candidate.name;
+      decision.x = candidate.x;
+      decision.y = candidate.y;
+      continue;
+    }
+    if (decision.active.empty()) {
+      decision.skipped.push_back(candidate);
+    }
+  }
+  return decision;
+}
+
+std::string deskflow::describeStackActivation(
+    const std::string &event, const std::string &previous, const StackDecision &decision
+)
+{
+  std::ostringstream out;
+  out << event;
+  for (const auto &skipped : decision.skipped) {
+    out << ", skip \"" << skipped.name << "\" (" << stackAvailabilityName(skipped.availability) << ")";
+  }
+  if (decision.active.empty()) {
+    out << ", no available layer";
+    if (!previous.empty()) {
+      out << "; fall back from \"" << previous << "\"";
+    }
+  } else {
+    out << ", activate \"" << decision.active << "\" at " << decision.x << "," << decision.y;
+    if (!previous.empty() && previous != decision.active) {
+      out << " (was \"" << previous << "\")";
+    }
+  }
+  return out.str();
+}
+
+bool deskflow::stackPointOnPlacement(
+    int32_t originX, int32_t originY, const std::vector<MonitorRect> &monitors, int32_t globalX, int32_t globalY,
+    int32_t &localX, int32_t &localY
+)
+{
+  for (const auto &monitor : monitors) {
+    if (!monitor.valid()) {
+      continue;
+    }
+    const int32_t left = originX + monitor.x;
+    const int32_t top = originY + monitor.y;
+    if (globalX < left || globalY < top || globalX >= left + monitor.width || globalY >= top + monitor.height) {
+      continue;
+    }
+    localX = clampTo(globalX - originX, monitor.x, monitor.width);
+    localY = clampTo(globalY - originY, monitor.y, monitor.height);
+    return true;
+  }
+  return false;
+}
+
+bool deskflow::appendStackCandidate(
+    std::vector<StackCandidate> &candidates, const std::string &name, int32_t z, int order,
+    StackAvailability availability, int32_t originX, int32_t originY, const std::vector<MonitorRect> &monitors,
+    int32_t globalX, int32_t globalY
+)
+{
+  if (name.empty()) {
+    return false;
+  }
+  for (const auto &candidate : candidates) {
+    if (string::CaselessCmp::equal(candidate.name, name)) {
+      return false;
+    }
+  }
+  int32_t localX = 0;
+  int32_t localY = 0;
+  if (!stackPointOnPlacement(originX, originY, monitors, globalX, globalY, localX, localY)) {
+    return false;
+  }
+  candidates.push_back(StackCandidate{name, z, order, availability, localX, localY});
+  return true;
+}
+
 void MonitorLayout::clear()
 {
   m_computers.clear();
 }
 
 void MonitorLayout::setComputer(
-    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+    const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+    bool enabled, int32_t z
 )
 {
   std::erase_if(monitors, [](const deskflow::MonitorRect &monitor) { return !monitor.valid(); });
@@ -47,11 +160,13 @@ void MonitorLayout::setComputer(
       placement.originX = originX;
       placement.originY = originY;
       placement.monitors = std::move(monitors);
+      placement.enabled = enabled;
+      placement.z = z;
       return;
     }
   }
 
-  m_computers.push_back(Placement{name, originX, originY, std::move(monitors)});
+  m_computers.push_back(Placement{name, originX, originY, std::move(monitors), enabled, z});
 }
 
 bool MonitorLayout::enabled() const
@@ -78,6 +193,9 @@ std::vector<MonitorLayout::GlobalMonitor> MonitorLayout::globals() const
 {
   std::vector<GlobalMonitor> all;
   for (const auto &placement : m_computers) {
+    if (!placement.enabled) {
+      continue;
+    }
     for (const auto &monitor : placement.monitors) {
       all.push_back(GlobalMonitor{placement.name, monitor, placement.originX, placement.originY});
     }
@@ -294,6 +412,78 @@ void MonitorLayout::hitEdges(
   }
 }
 
+std::vector<MonitorLayout::StackMember> MonitorLayout::stackMembersAt(int32_t globalX, int32_t globalY) const
+{
+  std::vector<StackMember> found;
+  int index = 0;
+  for (const auto &placement : m_computers) {
+    const int order = index++;
+    for (const auto &monitor : placement.monitors) {
+      int32_t localX = 0;
+      int32_t localY = 0;
+      if (!deskflow::stackPointOnPlacement(
+              placement.originX, placement.originY, {monitor}, globalX, globalY, localX, localY
+          )) {
+        continue;
+      }
+      StackMember member;
+      member.name = placement.name;
+      member.z = placement.z;
+      member.order = order;
+      member.x = localX;
+      member.y = localY;
+      member.enabled = placement.enabled;
+      found.push_back(std::move(member));
+      break;
+    }
+  }
+
+  std::sort(found.begin(), found.end(), [](const StackMember &left, const StackMember &right) {
+    if (left.z != right.z) {
+      return left.z > right.z;
+    }
+    if (left.order != right.order) {
+      return left.order > right.order;
+    }
+    return left.name > right.name;
+  });
+  return found;
+}
+
+std::optional<deskflow::MonitorCrossing>
+MonitorLayout::stackTarget(const std::string &computer, int32_t x, int32_t y) const
+{
+  const Placement *self = find(computer);
+  if (self == nullptr) {
+    return std::nullopt;
+  }
+
+  std::vector<deskflow::StackCandidate> candidates;
+  for (const auto &member : stackMembersAt(self->originX + x, self->originY + y)) {
+    deskflow::StackCandidate candidate;
+    candidate.name = member.name;
+    candidate.z = member.z;
+    candidate.order = member.order;
+    candidate.x = member.x;
+    candidate.y = member.y;
+    candidate.availability =
+        member.enabled ? deskflow::StackAvailability::Available : deskflow::StackAvailability::Unreachable;
+    candidates.push_back(std::move(candidate));
+  }
+
+  const auto decision = deskflow::chooseActiveStackLayer(std::move(candidates));
+  if (decision.active.empty() || decision.active == computer) {
+    return std::nullopt;
+  }
+
+  deskflow::MonitorCrossing crossing;
+  crossing.computer = decision.active;
+  crossing.x = decision.x;
+  crossing.y = decision.y;
+  crossing.travel = Direction::NoDirection;
+  return crossing;
+}
+
 std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
     const std::string &computer, int32_t fromX, int32_t fromY, int32_t toX, int32_t toY, int32_t &clampX,
     int32_t &clampY
@@ -301,6 +491,9 @@ std::optional<deskflow::MonitorCrossing> MonitorLayout::travel(
 {
   clampX = toX;
   clampY = toY;
+  if (auto stacked = stackTarget(computer, toX, toY); stacked.has_value()) {
+    return stacked;
+  }
   const auto all = globals();
   if (monitorAt(all, computer, toX, toY) != nullptr) {
     return std::nullopt;

@@ -637,6 +637,8 @@ void CoreProcess::onCoreIpcMessageReceived(const QString &command, const QString
     setConnectionState(state);
   } else if (command == "connectedClients") {
     const auto clients = args.isEmpty() ? QStringList() : args.split(",");
+    Settings::setValue(Settings::InternalConfig::ConnectedClients, clients);
+    Settings::proxy().setValue(Settings::InternalConfig::ConnectedClients, clients);
     Q_EMIT connectedClientsChanged(clients);
   } else if (command == "monitorGeometry") {
     const auto separator = args.indexOf(QLatin1Char('|'));

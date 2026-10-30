@@ -16,6 +16,7 @@
 #include "dialogs/ActionDialog.h"
 #include "dialogs/ComputerSettingsDialog.h"
 #include "dialogs/HotkeyDialog.h"
+#include "gui/config/LayoutClients.h"
 #include "gui/widgets/MonitorLayoutWidget.h"
 #include "gui/widgets/SettingsDialogButtonBox.h"
 
@@ -25,7 +26,10 @@
 using enum ComputerConfig::SwitchCorner;
 
 ServerConfigDialog::ServerConfigDialog(QWidget *parent, ServerConfig &config)
-    : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
+    : QDialog(
+          parent,
+          Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint
+      ),
       ui{std::make_unique<Ui::ServerConfigDialog>()},
       m_columns{Settings::value(Settings::Server::GridWidth).toInt()},
       m_rows{Settings::value(Settings::Server::GridHeight).toInt()},
@@ -53,7 +57,18 @@ ServerConfigDialog::ServerConfigDialog(QWidget *parent, ServerConfig &config)
   m_monitorLayout = new MonitorLayoutWidget(m_serverConfig, this);
   ui->tabWidget->addTab(m_monitorLayout, tr("Monitor layout"));
   connect(m_monitorLayout, &MonitorLayoutWidget::layoutChanged, this, &ServerConfigDialog::setButtonBoxEnabledButtons);
+  connect(m_monitorLayout, &MonitorLayoutWidget::authoritativeLayoutChanged, this, [this]() {
+    if (m_serverConfig.useExternalConfig()) {
+      return;
+    }
+    m_originalServerConfig.setUseMonitorLayout(m_serverConfig.useMonitorLayout());
+    m_originalServerConfig.setMonitorLayout(m_serverConfig.monitorLayout());
+    deskflow::saveInternalMonitorLayout(m_originalServerConfig);
+  });
   initConnections();
+  // The monitor layout is unreadable in the designed 724x609 size. Every open starts maximized;
+  // the title-bar button restores a normal window for this visit only.
+  setWindowState(windowState() | Qt::WindowMaximized);
 }
 
 ServerConfigDialog::~ServerConfigDialog() = default;
@@ -74,6 +89,9 @@ void ServerConfigDialog::save()
     if (selectedButton != QMessageBox::Ok || !browseConfigFile()) {
       return;
     }
+  }
+  if (m_monitorLayout != nullptr && !m_monitorLayout->commitPendingLayout()) {
+    return;
   }
   // now that the dialog has been accepted, copy the new server config to the
   // original one, which is a reference to the one in MainWindow.
@@ -99,14 +117,34 @@ void ServerConfigDialog::save()
   Settings::setValue(Settings::Server::ExternalConfigFile, ui->lineConfigFile->text());
 
   QStringList computerNames;
-  const auto computerList = m_computerSetupModel.m_computers;
-  for (const auto &computer : computerList) {
-    const auto &computerName = computer.name();
-    if (computerName.isEmpty())
-      continue;
-    computerNames.append(QStringLiteral("computer_%1").arg(computerName));
-    Settings::setValue(Settings::Computer::Aliases.arg(computerName), computer.aliases());
-    Settings::setValue(Settings::Computer::Name.arg(computerName), computerName);
+  const auto keep = [&](const QString &computerName) {
+    if (!computerName.isEmpty()) {
+      computerNames.append(QStringLiteral("computer_%1").arg(computerName));
+    }
+  };
+  if (ui->groupExternalConfig->isChecked()) {
+    // The grid is frozen while an external file is authoritative. Keep the general computer table.
+    for (const auto &computerName : Settings::knownComputers()) {
+      keep(computerName);
+    }
+    if (m_monitorLayout != nullptr) {
+      for (const auto &computer : m_monitorLayout->layout()) {
+        keep(computer.name);
+      }
+    }
+  } else {
+    const auto computerList = m_computerSetupModel.m_computers;
+    for (const auto &computer : computerList) {
+      const auto &computerName = computer.name();
+      if (computerName.isEmpty())
+        continue;
+      keep(computerName);
+      Settings::setValue(Settings::Computer::Aliases.arg(computerName), computer.aliases());
+      Settings::setValue(Settings::Computer::Name.arg(computerName), computerName);
+    }
+    for (const auto &computer : m_serverConfig.monitorLayout()) {
+      keep(computer.name);
+    }
   }
   Settings::removeUnknownComputers(computerNames);
   QDialog::accept();
@@ -367,6 +405,9 @@ void ServerConfigDialog::toggleExternalConfig(bool checked)
   ui->tabWidget->setTabEnabled(0, !checked);
   ui->tabWidget->setTabEnabled(1, !checked);
   serverConfig().setUseExternalConfig(checked);
+  if (m_monitorLayout != nullptr) {
+    m_monitorLayout->reloadFromConfig();
+  }
   setButtonBoxEnabledButtons();
 }
 
@@ -449,6 +490,13 @@ void ServerConfigDialog::applyReportedGeometry(const QString &computer, const QS
 {
   if (m_monitorLayout != nullptr) {
     m_monitorLayout->applyReportedGeometry(computer, monitors);
+  }
+}
+
+void ServerConfigDialog::refreshMonitorDiscovery()
+{
+  if (m_monitorLayout != nullptr) {
+    m_monitorLayout->reloadDiscovery();
   }
 }
 
@@ -585,6 +633,9 @@ void ServerConfigDialog::setServerConfig()
     return;
   }
   serverConfig().setConfigFile(configFile);
+  if (m_monitorLayout != nullptr && serverConfig().useExternalConfig()) {
+    m_monitorLayout->reloadFromConfig();
+  }
   setButtonBoxEnabledButtons();
 }
 
@@ -644,7 +695,9 @@ bool ServerConfigDialog::isGeneralConfigDefault() const
 void ServerConfigDialog::setButtonBoxEnabledButtons() const
 {
   const bool writable = Settings::isWritable();
-  m_buttonBox->enableSave(writable && (isGeneralConfigModified() || !(m_originalServerConfig == m_serverConfig)));
-  m_buttonBox->enableReset(writable && (isGeneralConfigModified() || !(m_originalServerConfig == m_serverConfig)));
+  const bool layoutPending = m_monitorLayout != nullptr && m_monitorLayout->hasPendingLayoutWrite();
+  const bool modified = isGeneralConfigModified() || layoutPending || !(m_originalServerConfig == m_serverConfig);
+  m_buttonBox->enableSave(writable && modified);
+  m_buttonBox->enableReset(writable && modified);
   m_buttonBox->enableRestoreDefaults(writable && !isGeneralConfigDefault() && ui->tabWidget->currentIndex() == 2);
 }

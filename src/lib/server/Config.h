@@ -301,6 +301,9 @@ public:
   */
   virtual bool isComputer(const std::string &name) const;
 
+  //! A disabled computer stays in the configuration, but links and hotkeys must not target it.
+  bool isComputerDisabled(const std::string &name) const;
+
   //! Test for canonical computer name
   /*!
   Returns true iff \c name is the canonical name of a computer.
@@ -348,6 +351,8 @@ public:
     int32_t originX = 0;
     int32_t originY = 0;
     std::vector<deskflow::MonitorRect> monitors;
+    //! Higher values are drawn and hit-tested in front. Omitted in old files, which means 0.
+    int32_t z = 0;
 
     bool operator==(const MonitorPlacement &) const = default;
   };
@@ -356,7 +361,8 @@ public:
 
   //! Replace one computer in the monitor layout. Empty monitors removes it.
   void setMonitorPlacement(
-      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors
+      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+      int32_t z = 0
   );
 
   //! Drop the monitor layout so neighbour links control pointer switching.
@@ -446,8 +452,11 @@ private:
   void parseComputers(const ConfigReadContext &, const std::string_view &, std::set<std::string> &computers) const;
 
 private:
+  using DisabledSet = std::set<std::string, deskflow::string::CaselessCmp>;
+
   CellMap m_map;
   NameMap m_nameToCanonicalName;
+  DisabledSet m_disabled;
   NetworkAddress m_deskflowAddress;
   ScreenOptions m_globalOptions;
   InputFilter m_inputFilter;
@@ -488,6 +497,19 @@ public:
     return m_stream;
   };
 
+  void skipRule()
+  {
+    m_skipRule = true;
+  }
+  bool ruleSkipped() const
+  {
+    return m_skipRule;
+  }
+  void resetRuleSkip()
+  {
+    m_skipRule = false;
+  }
+
 private:
   // not implemented
   ConfigReadContext &operator=(const ConfigReadContext &);
@@ -496,7 +518,8 @@ private:
 
 private:
   std::istream &m_stream;
-  int32_t m_line;
+  int32_t m_line = 0;
+  bool m_skipRule = false;
 };
 
 //! Configuration stream read exception

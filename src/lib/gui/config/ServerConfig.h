@@ -40,6 +40,8 @@ struct LayoutComputer
   int originX = 0;
   int originY = 0;
   QList<LayoutMonitor> monitors;
+  //! Higher values are in front. Old layouts omit it and stay at 0.
+  int z = 0;
 
   bool operator==(const LayoutComputer &) const = default;
 };

@@ -28,10 +28,25 @@ DESTDIR=$STAGE cmake --install "$BUILD_DIR" --prefix /usr
 LIBDIR=$STAGE/usr/lib/deskflow
 mkdir -p "$LIBDIR/plugins"
 
-# One qt.conf covers every executable in /usr/bin.
-cat >"$STAGE/usr/bin/qt.conf" <<'EOF'
+# Keep the real executables and qt.conf in a private directory. Qt reads
+# qt.conf from the application's own directory, so a qt.conf in /usr/bin
+# would redirect every Qt app in /usr/bin (VLC, Krita, ...) to our Qt 6
+# plugins and break them. /usr/bin only gets symlinks; Qt resolves
+# applicationDirPath through /proc/self/exe, so it still finds this qt.conf.
+BINDIR=$LIBDIR/bin
+mkdir -p "$BINDIR"
+for bin in deskflow deskflow-core; do
+  mv "$STAGE/usr/bin/$bin" "$BINDIR/$bin"
+  ln -s "../lib/deskflow/bin/$bin" "$STAGE/usr/bin/$bin"
+done
+if find "$STAGE/usr/bin" -maxdepth 1 -type f | grep -q .; then
+  echo "unexpected regular files left in /usr/bin:" >&2
+  find "$STAGE/usr/bin" -maxdepth 1 -type f >&2
+  exit 1
+fi
+cat >"$BINDIR/qt.conf" <<'EOF'
 [Paths]
-Prefix = ../lib/deskflow
+Prefix = ..
 Plugins = plugins
 Libraries = .
 EOF
@@ -75,13 +90,13 @@ copy_elf() {
 # Roots whose libraries must travel inside the package.
 bundle_root() {
   local path=$1
-  [[ $path == "$QT_ROOT"/* || $path == /opt/qt/* || $path == /usr/local/* || $path == /home/*/Qt/* ]]
+  [[ $path == "$QT_ROOT"/* || ( -n ${EXTRA_BUNDLE_ROOT:-} && $path == "$EXTRA_BUNDLE_ROOT"/* ) || $path == /opt/qt/* || $path == /usr/local/* || $path == /home/*/Qt/* ]]
 }
 
 pending=()
 while IFS= read -r -d '' bin; do
   pending+=("$bin")
-done < <(find "$STAGE/usr/bin" "$LIBDIR/plugins" -type f -print0)
+done < <(find "$BINDIR" "$LIBDIR/plugins" -type f -print0)
 
 seen_objects=" "
 round=0
@@ -135,12 +150,12 @@ while IFS= read -r -d '' obj; do
     patchelf --set-rpath "$(rpath_for "$obj")" "$obj"
     strip --strip-unneeded "$obj" || true
   fi
-done < <(find "$STAGE/usr/bin" "$LIBDIR" -type f -print0)
+done < <(find "$LIBDIR" -type f -print0)
 
 # LD_LIBRARY_PATH is searched before RUNPATH, so the check has to ignore it.
 echo "Bundled library check:"
-env -u LD_LIBRARY_PATH ldd "$STAGE/usr/bin/deskflow" | sed 's/^/  /'
-if env -u LD_LIBRARY_PATH ldd "$STAGE/usr/bin/deskflow" | grep -E 'Qt/|/usr/local/|/opt/qt/|not found'; then
+env -u LD_LIBRARY_PATH ldd "$BINDIR/deskflow" | sed 's/^/  /'
+if env -u LD_LIBRARY_PATH ldd "$BINDIR/deskflow" | grep -E 'Qt/|/usr/local/|/opt/qt/|not found'; then
   echo "deskflow still loads a library from the build machine" >&2
   exit 1
 fi
@@ -155,10 +170,15 @@ EOF
 (
   cd "$STAGE"
   # Bundled Qt/libei/libportal have no dpkg symbol files. System libraries still do.
-  dpkg-shlibdeps --ignore-missing-info -O usr/bin/deskflow usr/bin/deskflow-core >"$STAGE/DEBIAN/substvars"
+  dpkg-shlibdeps --ignore-missing-info -lusr/lib/deskflow -O usr/lib/deskflow/bin/deskflow usr/lib/deskflow/bin/deskflow-core >"$STAGE/DEBIAN/substvars"
 )
 rm -rf "$STAGE/debian"
 depends=$(sed -n 's/^shlibs:Depends=//p' "$STAGE/DEBIAN/substvars" | tr -d '\n')
+# A build machine with distro Qt 6 / libei / libportal installed has symbols
+# files for those SONAMEs, so dpkg-shlibdeps maps our private copies to the
+# distro packages. They are bundled; drop them from Depends.
+depends=$(printf '%s' "$depends" | tr ',' '\n' | sed 's/^ *//' |
+  grep -vE '^(libqt6[a-z0-9-]*|libei1|libportal1)( |$)' | paste -sd, - | sed 's/,/, /g')
 if [[ -z $depends ]]; then
   echo "dpkg-shlibdeps produced no dependencies" >&2
   exit 1
@@ -183,5 +203,10 @@ rm -f "$STAGE/DEBIAN/substvars"
 
 mkdir -p "$OUTPUT_DIR"
 outfile="$OUTPUT_DIR/deskflow-${VERSION}-ubuntu-24.04-amd64.deb"
+
 dpkg-deb --root-owner-group --build "$STAGE" "$outfile"
 echo "Wrote $outfile"
+if dpkg-deb -c "$outfile" | grep -E ' \./usr/bin/qt\.conf$'; then
+  echo "package must not ship /usr/bin/qt.conf" >&2
+  exit 1
+fi
