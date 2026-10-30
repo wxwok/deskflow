@@ -737,15 +737,20 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
 
   int clientOrdinal = 0;
   const auto order = paintOrder();
+  const auto connected = deskflow::connectedComputerNames();
   for (const int index : order) {
     const auto &computer = m_layout.at(index);
     const bool server = computer.name == m_serverName;
     const bool disabled = deskflow::isComputerDisabled(computer.name);
+    // Placed non-server not in the live connection list: Offline gray (same as Disabled),
+    // without writing computer_*/disabled. Manual Disable keeps Disabled + config.
+    const bool offline = !server && !disabled && !connected.contains(computer.name, Qt::CaseInsensitive);
     const auto group = overlapGroup(index);
     const bool stacked = group.size() > 1;
     const bool top = stacked && stackOrder(group).constFirst() == index;
-    QColor fill = disabled ? QColor(90, 90, 90) : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
-    if (stacked && !top && !disabled) {
+    QColor fill = (disabled || offline) ? QColor(90, 90, 90)
+                                        : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
+    if (stacked && !top && !disabled && !offline) {
       fill.setAlpha(150);
     }
     const bool reported = m_reported.contains(computer.name);
@@ -772,7 +777,7 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       painter.setPen(pen);
       painter.drawRect(painted.adjusted(0, 0, -1, -1));
       painter.setPen(Qt::white);
-      if (hostsRoster && !disabled) {
+      if (hostsRoster && !disabled && !offline) {
         painter.save();
         QFont mark = painter.font();
         mark.setBold(true);
@@ -789,6 +794,8 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       }
       if (disabled) {
         painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Disabled"));
+      } else if (offline) {
+        painter.drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Offline"));
       }
     }
   }
@@ -1247,6 +1254,10 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   const bool front = rank == 0;
   const bool selected = index == m_selected;
   const bool disabled = deskflow::isComputerDisabled(computer.name);
+  const bool server = computer.name == m_serverName;
+  const bool offline =
+      !server && !disabled &&
+      !deskflow::connectedComputerNames().contains(computer.name, Qt::CaseInsensitive);
   const auto *primary = largestMonitor(computer);
 
   painter->save();
@@ -1282,7 +1293,7 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   title.setPixelSize(15);
   title.setBold(true);
   painter->setFont(title);
-  painter->setPen(disabled ? QColor(130, 130, 130) : QColor(32, 40, 54));
+  painter->setPen((disabled || offline) ? QColor(130, 130, 130) : QColor(32, 40, 54));
   const QRect titleRect(card.left() + 12, card.top() + 8, badgeRect.left() - card.left() - 16, 22);
   painter->drawText(
       titleRect, Qt::AlignVCenter | Qt::AlignLeft,
@@ -1313,6 +1324,9 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   if (disabled) {
     painter->setPen(QColor(120, 120, 120));
     painter->drawText(card.adjusted(8, 8, -8, -8), Qt::AlignHCenter | Qt::AlignBottom, tr("Disabled"));
+  } else if (offline) {
+    painter->setPen(QColor(120, 120, 120));
+    painter->drawText(card.adjusted(8, 8, -8, -8), Qt::AlignHCenter | Qt::AlignBottom, tr("Offline"));
   }
   painter->restore();
 }
