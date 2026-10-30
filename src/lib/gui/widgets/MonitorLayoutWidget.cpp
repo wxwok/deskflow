@@ -742,14 +742,25 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
     const auto &computer = m_layout.at(index);
     const bool server = computer.name == m_serverName;
     const bool disabled = deskflow::isComputerDisabled(computer.name);
-    // Placed non-server not in the live connection list: Offline gray (same as Disabled),
-    // without writing computer_*/disabled. Manual Disable keeps Disabled + config.
+    // Offline = runtime disconnect only (no computer_*/disabled). Distinct from Disabled.
     const bool offline = !server && !disabled && !connected.contains(computer.name, Qt::CaseInsensitive);
     const auto group = overlapGroup(index);
     const bool stacked = group.size() > 1;
     const bool top = stacked && stackOrder(group).constFirst() == index;
-    QColor fill = (disabled || offline) ? QColor(90, 90, 90)
-                                        : (server ? QColor(80, 80, 80) : clientColors[clientOrdinal++ % 4]);
+    // Server online: vivid indigo (not charcoal). Disabled: mid gray. Offline: steel cyan.
+    static const QColor kServerFill(55, 105, 175);
+    static const QColor kDisabledFill(145, 145, 145);
+    static const QColor kOfflineFill(68, 112, 138);
+    QColor fill;
+    if (disabled) {
+      fill = kDisabledFill;
+    } else if (offline) {
+      fill = kOfflineFill;
+    } else if (server) {
+      fill = kServerFill;
+    } else {
+      fill = clientColors[clientOrdinal++ % 4];
+    }
     if (stacked && !top && !disabled && !offline) {
       fill.setAlpha(150);
     }
@@ -773,7 +784,16 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       painter.fillRect(painted, fill);
       QPen pen(selected ? QColor(255, 220, 120) : (top ? QColor(210, 225, 255) : QColor(Qt::white)));
       pen.setWidth(selected || top ? 2 : 1);
-      pen.setStyle(reported ? Qt::SolidLine : Qt::DashLine);
+      if (offline) {
+        pen.setColor(selected ? QColor(255, 220, 120) : QColor(140, 200, 230));
+        pen.setStyle(Qt::DashLine);
+        pen.setWidth(2);
+      } else if (disabled) {
+        pen.setColor(selected ? QColor(255, 220, 120) : QColor(190, 190, 190));
+        pen.setStyle(reported ? Qt::SolidLine : Qt::DashLine);
+      } else {
+        pen.setStyle(reported ? Qt::SolidLine : Qt::DashLine);
+      }
       painter.setPen(pen);
       painter.drawRect(painted.adjusted(0, 0, -1, -1));
       painter.setPen(Qt::white);
@@ -1265,11 +1285,27 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   painter->setPen(Qt::NoPen);
   painter->setBrush(QColor(20, 30, 50, 28));
   painter->drawRoundedRect(card.translated(0, 4), 12, 12);
-  painter->setBrush(front ? QColor(255, 255, 255) : QColor(248, 246, 242));
+  if (disabled) {
+    painter->setBrush(QColor(232, 232, 232));
+  } else if (offline) {
+    painter->setBrush(QColor(232, 242, 248));
+  } else if (server) {
+    painter->setBrush(front ? QColor(236, 244, 255) : QColor(228, 238, 252));
+  } else {
+    painter->setBrush(front ? QColor(255, 255, 255) : QColor(248, 246, 242));
+  }
   painter->setPen(Qt::NoPen);
   painter->drawRoundedRect(card, 12, 12);
   QPen border(selected ? QColor(230, 168, 40) : (front ? QColor(47, 128, 237) : QColor(214, 214, 214)));
-  border.setWidth(selected || front ? 2 : 1);
+  if (disabled && !selected) {
+    border.setColor(QColor(170, 170, 170));
+  } else if (offline && !selected) {
+    border.setColor(QColor(70, 140, 180));
+    border.setStyle(Qt::DashLine);
+  } else if (server && !selected && !front) {
+    border.setColor(QColor(100, 150, 210));
+  }
+  border.setWidth(selected || front || offline ? 2 : 1);
   painter->setPen(border);
   painter->setBrush(Qt::NoBrush);
   painter->drawRoundedRect(card.adjusted(1, 1, -1, -1), 11, 11);
@@ -1293,7 +1329,7 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   title.setPixelSize(15);
   title.setBold(true);
   painter->setFont(title);
-  painter->setPen((disabled || offline) ? QColor(130, 130, 130) : QColor(32, 40, 54));
+  painter->setPen(disabled ? QColor(120, 120, 120) : (offline ? QColor(50, 100, 130) : QColor(32, 40, 54)));
   const QRect titleRect(card.left() + 12, card.top() + 8, badgeRect.left() - card.left() - 16, 22);
   painter->drawText(
       titleRect, Qt::AlignVCenter | Qt::AlignLeft,
@@ -1322,10 +1358,10 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
     );
   }
   if (disabled) {
-    painter->setPen(QColor(120, 120, 120));
+    painter->setPen(QColor(110, 110, 110));
     painter->drawText(card.adjusted(8, 8, -8, -8), Qt::AlignHCenter | Qt::AlignBottom, tr("Disabled"));
   } else if (offline) {
-    painter->setPen(QColor(120, 120, 120));
+    painter->setPen(QColor(50, 110, 145));
     painter->drawText(card.adjusted(8, 8, -8, -8), Qt::AlignHCenter | Qt::AlignBottom, tr("Offline"));
   }
   painter->restore();
@@ -1412,11 +1448,22 @@ void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &tr
       QFont rowFont = font;
       rowFont.setBold(lead);
       painter->setFont(rowFont);
-      painter->setPen(lead ? QColor(36, 44, 58) : QColor(130, 130, 130));
+      const auto &rowComputer = m_layout.at(member);
+      const bool rowDisabled = deskflow::isComputerDisabled(rowComputer.name);
+      const bool rowOffline =
+          rowComputer.name != m_serverName && !rowDisabled &&
+          !deskflow::connectedComputerNames().contains(rowComputer.name, Qt::CaseInsensitive);
+      if (rowDisabled) {
+        painter->setPen(QColor(120, 120, 120));
+      } else if (rowOffline) {
+        painter->setPen(QColor(50, 100, 130));
+      } else {
+        painter->setPen(lead ? QColor(36, 44, 58) : QColor(130, 130, 130));
+      }
       const QRect nameRect(circle.right() + 6, row.top(), row.right() - circle.right() - 10, rowHeight);
       painter->drawText(
           nameRect, Qt::AlignVCenter | Qt::AlignLeft,
-          QFontMetrics(rowFont).elidedText(m_layout.at(member).name, Qt::ElideRight, nameRect.width())
+          QFontMetrics(rowFont).elidedText(rowComputer.name, Qt::ElideRight, nameRect.width())
       );
       m_nameChips.append(NameChip{member, row});
     }
