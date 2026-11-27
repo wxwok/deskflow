@@ -743,6 +743,17 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>&lt;p&gt;Keyboard layout support requires matching layouts on all computers. The following layouts from the other computer are not installed on this computer:&lt;/p&gt;&lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;Please install them to enable support for these layouts.&lt;/p&gt;</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Monitor &amp;layout</source>
+        <translation>显示器布局(&amp;L)</translation>
+    </message>
+</context>
+<context>
+    <name>MonitorLayoutDialog</name>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished">显示器布局</translation>
+    </message>
 </context>
 <context>
     <name>MonitorLayoutWidget</name>
@@ -857,6 +868,18 @@ Additionally, check you are able to %1 the server config file: %2</source>
     <message>
         <source>Reorder computers that overlap. The front screen receives the pointer; screens underneath are paused there, not disabled. These stay off when the selection does not overlap another computer.</source>
         <translation>调整互相重叠的计算机的顺序。最前面的屏幕接收指针，下面的在该处暂停，这不是禁用。所选计算机没有与其他计算机重叠时，这些按钮保持灰色。</translation>
+    </message>
+    <message>
+        <source>A phone that disconnects is Offline. It is not marked Disabled.</source>
+        <translation>断开的手机显示为 Offline，不会被标成 Disabled。</translation>
+    </message>
+    <message>
+        <source>Offline</source>
+        <translation>Offline</translation>
+    </message>
+    <message>
+        <source>Unregister phone</source>
+        <translation>取消注册手机</translation>
     </message>
 </context>
 <context>
@@ -1510,6 +1533,348 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>Encryption Disabled</source>
         <translation>加密已禁用</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::ClipboardEditor</name>
+    <message>
+        <source>Phone clipboard</source>
+        <translation>手机剪贴板</translation>
+    </message>
+    <message>
+        <source>Plain text only. Type here with the computer input method, including Chinese. Send puts the text on the phone clipboard. Send and paste also injects a paste into the phone window.</source>
+        <translation>只接受纯文本。在这里用电脑输入法输入，包括中文。发送会写入手机剪贴板。发送并粘贴还会向手机窗口注入粘贴。</translation>
+    </message>
+    <message>
+        <source>Draft text for the phone</source>
+        <translation>给手机的草稿</translation>
+    </message>
+    <message>
+        <source>Load phone clipboard</source>
+        <translation>读取手机剪贴板</translation>
+    </message>
+    <message>
+        <source>Send to phone clipboard</source>
+        <translation>发送到手机剪贴板</translation>
+    </message>
+    <message>
+        <source>Send and paste</source>
+        <translation>发送并粘贴</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::HotEdgeBar</name>
+    <message>
+        <source>Phone screen</source>
+        <translation>手机屏幕</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PairingDialog</name>
+    <message>
+        <source>Pair wireless debugging</source>
+        <translation>配对无线调试</translation>
+    </message>
+    <message>
+        <source>On the phone, open Wireless debugging and pair with a code. Use the phone&apos;s LAN address. Deskflow does not use a proxy for adb.</source>
+        <translation>在手机上打开无线调试，用配对码配对。请填写手机的局域网地址。Deskflow 的 adb 不走代理。</translation>
+    </message>
+    <message>
+        <source>Phone IP</source>
+        <translation>手机 IP</translation>
+    </message>
+    <message>
+        <source>Pairing port</source>
+        <translation>配对端口</translation>
+    </message>
+    <message>
+        <source>Pairing code</source>
+        <translation>配对码</translation>
+    </message>
+    <message>
+        <source>Connect port</source>
+        <translation>连接端口</translation>
+    </message>
+    <message>
+        <source>Enter a private LAN address, both ports, and the pairing code.</source>
+        <translation>请填写局域网私有地址、两个端口和配对码。</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PhoneBezel</name>
+    <message>
+        <source>Battery --</source>
+        <translation>电量 --</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation>钉住</translation>
+    </message>
+    <message>
+        <source>Unpin</source>
+        <translation>取消钉住</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>返回</translation>
+    </message>
+    <message>
+        <source>Home</source>
+        <translation>主页</translation>
+    </message>
+    <message>
+        <source>Recents</source>
+        <translation>最近任务</translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation>电源</translation>
+    </message>
+    <message>
+        <source>Screen off</source>
+        <translation>关闭屏幕</translation>
+    </message>
+    <message>
+        <source>Screen on</source>
+        <translation>打开屏幕</translation>
+    </message>
+    <message>
+        <source>Volume +</source>
+        <translation>音量 +</translation>
+    </message>
+    <message>
+        <source>Volume -</source>
+        <translation>音量 -</translation>
+    </message>
+    <message>
+        <source>Mute audio</source>
+        <translation>静音</translation>
+    </message>
+    <message>
+        <source>Unmute audio</source>
+        <translation>取消静音</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>通知栏</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>键盘</translation>
+    </message>
+    <message>
+        <source>Paste clipboard</source>
+        <translation>粘贴剪贴板</translation>
+    </message>
+    <message>
+        <source>Clipboard editor</source>
+        <translation>剪贴板编辑</translation>
+    </message>
+    <message>
+        <source>Pin apps</source>
+        <translation>钉住应用</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>隐藏</translation>
+    </message>
+    <message>
+        <source>Drop files here or on the phone picture</source>
+        <translation>把文件拖到这里或手机画面上</translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation>电量 %1%</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PhoneController</name>
+    <message>
+        <source>Android phones</source>
+        <translation>安卓手机</translation>
+    </message>
+    <message>
+        <source>Use Android phone screens</source>
+        <translation>使用安卓手机屏幕</translation>
+    </message>
+    <message>
+        <source>adb path, or empty to search PATH</source>
+        <translation>adb 路径，留空则搜索 PATH</translation>
+    </message>
+    <message>
+        <source>scrcpy path, or empty to search PATH and /opt/scrcpy-v5.0.1</source>
+        <translation>scrcpy 路径，留空则搜索 PATH 和 /opt/scrcpy-v5.0.1</translation>
+    </message>
+    <message>
+        <source>Pair wireless debugging</source>
+        <translation>配对无线调试</translation>
+    </message>
+    <message>
+        <source>adb</source>
+        <translation>adb</translation>
+    </message>
+    <message>
+        <source>scrcpy</source>
+        <translation>scrcpy</translation>
+    </message>
+    <message>
+        <source>Android phone screens are off. Existing computers are unchanged.</source>
+        <translation>已关闭安卓手机屏幕。现有电脑没有改动。</translation>
+    </message>
+    <message>
+        <source>adb was not found.</source>
+        <translation>没有找到 adb。</translation>
+    </message>
+    <message>
+        <source>Wireless pairing failed. Check the LAN address and the code. The code was not saved.</source>
+        <translation>无线配对失败。请检查局域网地址和配对码。配对码没有保存。</translation>
+    </message>
+    <message>
+        <source>Wireless debugging connected.</source>
+        <translation>无线调试已连接。</translation>
+    </message>
+    <message>
+        <source>Paired, but connecting failed. Check the connect port.</source>
+        <translation>已经配对，但连接失败。请检查连接端口。</translation>
+    </message>
+    <message>
+        <source>The phone window could not be kept hidden, so it was closed. The desktop pointer was not captured.</source>
+        <translation>手机窗口无法保持隐藏，因此已关闭。桌面指针没有被抓住。</translation>
+    </message>
+    <message>
+        <source>The text is on the phone clipboard. This desktop cannot focus the scrcpy window to paste it. Press Alt+V in the phone window.</source>
+        <translation>文字已在手机剪贴板上。这个桌面无法聚焦 scrcpy 窗口来粘贴。请在手机窗口按 Alt+V。</translation>
+    </message>
+    <message>
+        <source>Only plain text can be sent to the phone.</source>
+        <translation>只能向手机发送纯文本。</translation>
+    </message>
+    <message>
+        <source>Wayland cannot show, hide, raise, or warp scrcpy, and cannot send keys into it. The phone window is started when the pointer enters the edge and closed when it leaves. Screen off, keyboard layout, and paste need Alt+O, Alt+K, and Alt+V in that window.</source>
+        <translation>Wayland 无法显示、隐藏、置前或把指针移进 scrcpy，也不能向它发送按键。指针进入边缘时才启动手机窗口，离开时关闭。关屏、键盘布局和粘贴需要在该窗口按 Alt+O、Alt+K 和 Alt+V。</translation>
+    </message>
+    <message>
+        <source>xdotool is not installed, so Deskflow cannot hide, raise, or control the scrcpy window. Install xdotool on X11, or use the scrcpy shortcuts inside the phone window.</source>
+        <translation>没有安装 xdotool，因此 Deskflow 无法隐藏、置前或控制 scrcpy 窗口。请在 X11 上安装 xdotool，或在手机窗口里使用 scrcpy 快捷键。</translation>
+    </message>
+    <message>
+        <source>Hiding and raising the scrcpy window is not available on this system. The official scrcpy window is still started at the edge.</source>
+        <translation>这个系统无法隐藏或置前 scrcpy 窗口。官方 scrcpy 窗口仍会在边缘启动。</translation>
+    </message>
+    <message>
+        <source>adb was not found. Set its path in Monitor layout, or install adb on PATH.</source>
+        <translation>没有找到 adb。请在显示器布局里填写路径，或把 adb 装到 PATH。</translation>
+    </message>
+    <message>
+        <source>adb could not be started.</source>
+        <translation>无法启动 adb。</translation>
+    </message>
+    <message>
+        <source>Using the scrcpy window that is already open for this phone.</source>
+        <translation>使用这台手机已经打开的 scrcpy 窗口。</translation>
+    </message>
+    <message>
+        <source>scrcpy was not found. Set its path in Monitor layout. The desktop pointer was not captured.</source>
+        <translation>没有找到 scrcpy。请在显示器布局里填写路径。桌面指针没有被抓住。</translation>
+    </message>
+    <message>
+        <source>scrcpy closed.</source>
+        <translation>scrcpy 已关闭。</translation>
+    </message>
+    <message>
+        <source>Files were copied to Download on the phone. Dropping on the picture uses scrcpy itself.</source>
+        <translation>文件已复制到手机的 Download。拖到画面上则使用 scrcpy 自己的拖放。</translation>
+    </message>
+    <message>
+        <source>That phone is offline, so the edge does nothing. It is not marked Disabled.</source>
+        <translation>这台手机是 Offline，边缘不会有动作，也不会被标成 Disabled。</translation>
+    </message>
+    <message>
+        <source>Could not send the shortcut to scrcpy.</source>
+        <translation>无法把快捷键发给 scrcpy。</translation>
+    </message>
+    <message>
+        <source>Press the matching scrcpy shortcut in the phone window. This desktop cannot send it.</source>
+        <translation>请在手机窗口按对应的 scrcpy 快捷键。这个桌面无法替你发送。</translation>
+    </message>
+    <message>
+        <source>Register a phone before opening the clipboard editor.</source>
+        <translation>请先注册手机，再打开剪贴板编辑。</translation>
+    </message>
+    <message>
+        <source>The phone clipboard could not be read. scrcpy has no read command; Android cmd clipboard get-text failed.</source>
+        <translation>读不到手机剪贴板。scrcpy 没有读取命令，Android 的 cmd clipboard get-text 也失败了。</translation>
+    </message>
+    <message>
+        <source>That app cannot be launched.</source>
+        <translation>无法启动这个应用。</translation>
+    </message>
+    <message>
+        <source>scrcpy has no mute shortcut. Mute applies with --no-audio the next time its window opens, or now if PulseAudio pactl can see the stream.</source>
+        <translation>scrcpy 没有静音快捷键。若 pactl 能看到 PulseAudio 流会立刻静音，否则下次打开窗口时使用 --no-audio。</translation>
+    </message>
+    <message>
+        <source>The phone was placed below the current screens. Drag it onto a free edge. It does not move the other computers.</source>
+        <translation>手机已放在现有屏幕下方。请把它拖到空闲边缘。其他电脑不会被移动。</translation>
+    </message>
+    <message>
+        <source>Phone keyboard</source>
+        <translation>手机键盘</translation>
+    </message>
+    <message>
+        <source>For Chinese, use the phone input method and switch the computer input method to English.</source>
+        <translation>中文请用手机输入法，电脑输入法请切换到英文。</translation>
+    </message>
+    <message>
+        <source>The phone window is started with --keyboard=uhid. Physical keyboard layout is scrcpy Alt+K.</source>
+        <translation>手机窗口以 --keyboard=uhid 启动。物理键盘布局对应 scrcpy 的 Alt+K。</translation>
+    </message>
+    <message>
+        <source>Unauthorized</source>
+        <translation>未授权</translation>
+    </message>
+    <message>
+        <source>Offline</source>
+        <translation>Offline</translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation>USB</translation>
+    </message>
+    <message>
+        <source>Wireless</source>
+        <translation>无线</translation>
+    </message>
+    <message>
+        <source>No Android phones yet. Plug one in with USB debugging, or pair wireless debugging.</source>
+        <translation>还没有安卓手机。请插上已打开 USB 调试的手机，或配对无线调试。</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>注册</translation>
+    </message>
+    <message>
+        <source>Unregister</source>
+        <translation>取消注册</translation>
+    </message>
+    <message>
+        <source>Drag the phone onto a free edge of this computer. Edges already used by another computer stay theirs.</source>
+        <translation>把手机拖到这台电脑的空闲边缘。已经被其他电脑占用的边缘保持原样。</translation>
+    </message>
+    <message>
+        <source>A phone is offline. Reconnect USB or wireless debugging. It is not marked Disabled.</source>
+        <translation>有手机处于 Offline。请重新连接 USB 或无线调试。它不会被标成 Disabled。</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PinnedAppsDialog</name>
+    <message>
+        <source>Pin phone apps</source>
+        <translation>钉住手机应用</translation>
+    </message>
+    <message>
+        <source>Pinned apps are saved for this phone only. A click launches that app.</source>
+        <translation>钉住的应用只保存在这台手机上。点击即可启动。</translation>
     </message>
 </context>
 <context>

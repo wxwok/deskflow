@@ -65,12 +65,30 @@ add_library(${target} STATIC
   dialogs/HotkeyDialog.cpp
   dialogs/HotkeyDialog.h
   dialogs/HotkeyDialog.ui
+  dialogs/MonitorLayoutDialog.cpp
+  dialogs/MonitorLayoutDialog.h
   dialogs/ServerConfigDialog.cpp
   dialogs/ServerConfigDialog.h
   dialogs/ServerConfigDialog.ui
   dialogs/SettingsDialog.cpp
   dialogs/SettingsDialog.h
   dialogs/SettingsDialog.ui
+  phone/ClipboardEditor.cpp
+  phone/ClipboardEditor.h
+  phone/HotEdgeBar.cpp
+  phone/HotEdgeBar.h
+  phone/PairingDialog.cpp
+  phone/PairingDialog.h
+  phone/PhoneBezel.cpp
+  phone/PhoneBezel.h
+  phone/PhoneController.cpp
+  phone/PhoneController.h
+  phone/PhoneLogic.cpp
+  phone/PhoneTypes.h
+  phone/PhoneStore.cpp
+  phone/PhoneStore.h
+  phone/PinnedAppsDialog.cpp
+  phone/PinnedAppsDialog.h
   ipc/IpcClient.cpp
   ipc/IpcClient.h
   ipc/DaemonIpcClient.cpp

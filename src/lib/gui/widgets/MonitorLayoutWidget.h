@@ -9,6 +9,7 @@
 #include "deskflow/MonitorSnap.h"
 #include "gui/config/LayoutClients.h"
 #include "gui/config/ServerConfig.h"
+#include "gui/phone/PhoneTypes.h"
 
 #include <QList>
 #include <QPoint>
@@ -36,6 +37,12 @@ public:
 
   void reloadFromConfig();
   void reloadDiscovery();
+  void setPhoneLayouts(const QList<deskflow::phone::PhoneLayoutItem> &phones);
+  void setPhoneStatus(const QString &status);
+  QWidget *phonePanel() const
+  {
+    return m_phonePanel;
+  }
   void applyReportedGeometry(const QString &computer, const QString &body);
   const QList<LayoutComputer> &layout() const
   {
@@ -67,6 +74,8 @@ Q_SIGNALS:
   void layoutChanged();
   //! The internal monitor layout was committed to the general config and the caller's ServerConfig.
   void authoritativeLayoutChanged();
+  void phoneMoved(const QString &id, int originX, int originY);
+  void unregisterPhoneRequested(const QString &id);
 
 protected:
   void paintEvent(QPaintEvent *event) override;
@@ -124,6 +133,10 @@ private:
   bool isExternal() const;
   std::vector<deskflow::SnapRect> rectsFor(int index, int originX, int originY) const;
   QPointF mapLayout(const Transform &transform, int32_t x, int32_t y) const;
+  QRect paintRect(const Transform &transform, const QRect &layoutRect) const;
+  int phoneAt(const QPointF &widgetPoint) const;
+  void moveSelectedPhone(int originX, int originY);
+  void paintPhones(QPainter *painter, const Transform &transform) const;
 
   ServerConfig &m_config;
   QList<LayoutComputer> m_layout;
@@ -136,6 +149,8 @@ private:
   QLabel *m_hint = nullptr;
   QLabel *m_discoveryLabel = nullptr;
   QLabel *m_status = nullptr;
+  QLabel *m_phoneStatus = nullptr;
+  QWidget *m_phonePanel = nullptr;
   QWidget *m_discoveryHost = nullptr;
   QVBoxLayout *m_discoveryLayout = nullptr;
   QPushButton *m_participation = nullptr;
@@ -157,6 +172,11 @@ private:
   QSpinBox *m_originY = nullptr;
   int m_dragIndex = -1;
   int m_selected = -1;
+  QList<deskflow::phone::PhoneLayoutItem> m_phones;
+  QString m_selectedPhone;
+  int m_phoneDrag = -1;
+  double m_phoneFreeX = 0.0;
+  double m_phoneFreeY = 0.0;
   double m_freeX = 0.0;
   double m_freeY = 0.0;
   QPointF m_dragLast;

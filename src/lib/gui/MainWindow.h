@@ -33,6 +33,10 @@ class DeskflowApplication;
 class LogDock;
 class StatusBar;
 
+namespace deskflow::phone {
+class PhoneController;
+}
+
 namespace Ui {
 class MainWindow;
 }
@@ -202,6 +206,8 @@ private:
   QAction *m_actionRestartCore = nullptr;
   QAction *m_actionStopCore = nullptr;
   QAction *m_actionShowHelp = nullptr;
+  QAction *m_actionMonitorLayout = nullptr;
+  deskflow::phone::PhoneController *m_phoneController = nullptr;
 
   // Network monitoring
   NetworkMonitor *m_networkMonitor = nullptr;

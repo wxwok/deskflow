@@ -743,6 +743,17 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>&lt;p&gt;Keyboard layout support requires matching layouts on all computers. The following layouts from the other computer are not installed on this computer:&lt;/p&gt;&lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;Please install them to enable support for these layouts.&lt;/p&gt;</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Monitor &amp;layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MonitorLayoutDialog</name>
+    <message>
+        <source>Monitor layout</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>MonitorLayoutWidget</name>
@@ -856,6 +867,18 @@ Additionally, check you are able to %1 the server config file: %2</source>
     </message>
     <message>
         <source>Drag a computer so its monitors touch or overlap another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. A computer you drop on top of another comes to the front. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Where screens overlap, only the front one receives the pointer; the ones underneath are paused there and stay in the layout. Leave this off to keep the grid links.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A phone that disconnects is Offline. It is not marked Disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Offline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unregister phone</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1508,6 +1531,348 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>Encryption Disabled</source>
         <translation>Шифрование отключено</translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::ClipboardEditor</name>
+    <message>
+        <source>Phone clipboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plain text only. Type here with the computer input method, including Chinese. Send puts the text on the phone clipboard. Send and paste also injects a paste into the phone window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Draft text for the phone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load phone clipboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send to phone clipboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send and paste</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::HotEdgeBar</name>
+    <message>
+        <source>Phone screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PairingDialog</name>
+    <message>
+        <source>Pair wireless debugging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the phone, open Wireless debugging and pair with a code. Use the phone&apos;s LAN address. Deskflow does not use a proxy for adb.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phone IP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a private LAN address, both ports, and the pairing code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PhoneBezel</name>
+    <message>
+        <source>Battery --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unpin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Home</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume +</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume -</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste clipboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clipboard editor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pin apps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drop files here or on the phone picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PhoneController</name>
+    <message>
+        <source>Android phones</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use Android phone screens</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>adb path, or empty to search PATH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scrcpy path, or empty to search PATH and /opt/scrcpy-v5.0.1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair wireless debugging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>adb</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scrcpy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Android phone screens are off. Existing computers are unchanged.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>adb was not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wireless pairing failed. Check the LAN address and the code. The code was not saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wireless debugging connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paired, but connecting failed. Check the connect port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The phone window could not be kept hidden, so it was closed. The desktop pointer was not captured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The text is on the phone clipboard. This desktop cannot focus the scrcpy window to paste it. Press Alt+V in the phone window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only plain text can be sent to the phone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wayland cannot show, hide, raise, or warp scrcpy, and cannot send keys into it. The phone window is started when the pointer enters the edge and closed when it leaves. Screen off, keyboard layout, and paste need Alt+O, Alt+K, and Alt+V in that window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>xdotool is not installed, so Deskflow cannot hide, raise, or control the scrcpy window. Install xdotool on X11, or use the scrcpy shortcuts inside the phone window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hiding and raising the scrcpy window is not available on this system. The official scrcpy window is still started at the edge.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>adb was not found. Set its path in Monitor layout, or install adb on PATH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>adb could not be started.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using the scrcpy window that is already open for this phone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scrcpy was not found. Set its path in Monitor layout. The desktop pointer was not captured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scrcpy closed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Files were copied to Download on the phone. Dropping on the picture uses scrcpy itself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That phone is offline, so the edge does nothing. It is not marked Disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not send the shortcut to scrcpy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Press the matching scrcpy shortcut in the phone window. This desktop cannot send it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Register a phone before opening the clipboard editor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The phone clipboard could not be read. scrcpy has no read command; Android cmd clipboard get-text failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That app cannot be launched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scrcpy has no mute shortcut. Mute applies with --no-audio the next time its window opens, or now if PulseAudio pactl can see the stream.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The phone was placed below the current screens. Drag it onto a free edge. It does not move the other computers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phone keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>For Chinese, use the phone input method and switch the computer input method to English.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The phone window is started with --keyboard=uhid. Physical keyboard layout is scrcpy Alt+K.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unauthorized</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Offline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wireless</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Android phones yet. Plug one in with USB debugging, or pair wireless debugging.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unregister</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag the phone onto a free edge of this computer. Edges already used by another computer stay theirs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A phone is offline. Reconnect USB or wireless debugging. It is not marked Disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>deskflow::phone::PinnedAppsDialog</name>
+    <message>
+        <source>Pin phone apps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pinned apps are saved for this phone only. A click launches that app.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
