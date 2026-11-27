@@ -1,0 +1,11 @@
+<map id="src/lib/platform/InputCaptureRecovery.h" name="src/lib/platform/InputCaptureRecovery.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="86,5,271,44"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,92,80,117"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="148,46,77,86,75,82,143,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="104,92,168,117"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="170,43,152,80,148,76,166,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="192,92,253,117"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="190,42,211,79,206,78,188,47"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="276,92,334,117"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="210,42,276,84,271,84,208,47"/>
+</map>

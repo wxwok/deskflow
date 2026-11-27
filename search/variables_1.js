@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['backlog_0',['backlog',['../ArchNetworkWinsock_8cpp.html#a9507e1c27beffe02ed97c7b076a42f24',1,'ArchNetworkWinsock.cpp']]],
+  ['backuppath_1',['backupPath',['../structdeskflow_1_1LayoutWriteResult.html#a511337a336b357c97be7bfc42e6e1d9f',1,'deskflow::LayoutWriteResult::backupPath'],['../structdeskflow_1_1AddComputerResult.html#a921ad92127d56ca5e8171aa6c222e270',1,'deskflow::AddComputerResult::backupPath']]],
+  ['begin_2',['begin',['../structdeskflow_1_1EdgeSpan.html#a6051a9b2b586bed30bef54b9d415449f',1,'deskflow::EdgeSpan::begin'],['../structdeskflow_1_1SnapGuide.html#a3bf86404fda386b644c3131765556bce',1,'deskflow::SnapGuide::begin'],['../structdeskflow_1_1SwitchSegment.html#aa69b3a8cac3fa7cb2d0705bb330ce6bc',1,'deskflow::SwitchSegment::begin'],['../structdeskflow_1_1detail_1_1Interval.html#a60e98e6e4ec7e793d2b12d5dcf510954',1,'deskflow::detail::Interval::begin']]],
+  ['bibitcount_3',['biBitCount',['../structCBMPInfoHeader.html#a0f1f02e5482ff399741e43c0e12cdee2',1,'CBMPInfoHeader']]],
+  ['biclrimportant_4',['biClrImportant',['../structCBMPInfoHeader.html#ae58803ac900f8dca642baa51af9ee522',1,'CBMPInfoHeader']]],
+  ['biclrused_5',['biClrUsed',['../structCBMPInfoHeader.html#a36bc22e7defdcd14b394a52d10b9b13c',1,'CBMPInfoHeader']]],
+  ['bicompression_6',['biCompression',['../structCBMPInfoHeader.html#add45102c7f339ebb00b0d61f73f575ef',1,'CBMPInfoHeader']]],
+  ['biheight_7',['biHeight',['../structCBMPInfoHeader.html#adc2e30ed66c813f2778768c8ba3c138b',1,'CBMPInfoHeader']]],
+  ['biplanes_8',['biPlanes',['../structCBMPInfoHeader.html#a995e03b7a1c3b514600ea3e0f676fb52',1,'CBMPInfoHeader']]],
+  ['bisize_9',['biSize',['../structCBMPInfoHeader.html#a69649d77280795b307f42fb28bb43783',1,'CBMPInfoHeader']]],
+  ['bisizeimage_10',['biSizeImage',['../structCBMPInfoHeader.html#ac2ce465fc837c647b9c50f7437d7317b',1,'CBMPInfoHeader']]],
+  ['biwidth_11',['biWidth',['../structCBMPInfoHeader.html#a4a19e9822b8f32a5e9558d70cf349618',1,'CBMPInfoHeader']]],
+  ['bixpelspermeter_12',['biXPelsPerMeter',['../structCBMPInfoHeader.html#aae67b93de47f697d38f8decc15175a5f',1,'CBMPInfoHeader']]],
+  ['biypelspermeter_13',['biYPelsPerMeter',['../structCBMPInfoHeader.html#ab4bd17342a4d6704cec23da8d9c282c9',1,'CBMPInfoHeader']]],
+  ['bool_14',['BOOL',['../ArchNetworkWinsock_8cpp.html#a36a00ba9910ecdadcef4246d090b3e1f',1,'ArchNetworkWinsock.cpp']]],
+  ['buf_15',['buf',['../ArchNetworkWinsock_8cpp.html#ac2b1742b0d829eff8513995ebd5a0bac',1,'ArchNetworkWinsock.cpp']]]
+];

@@ -1,0 +1,5 @@
+<map id="deskflow::detail::AxisOption" name="deskflow::detail::AxisOption">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,100,189,125"/>
+<area shape="rect" id="Node000002" href="$structdeskflow_1_1SnapGuide.html" title="A guide line produced by a snap. Vertical lines have constant position x." alt="" coords="25,5,169,30"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="99,44,100,101,94,99,95,48"/>
+</map>

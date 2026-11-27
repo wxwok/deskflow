@@ -1,0 +1,19 @@
+<map id="src/lib/server/MonitorLayout.h" name="src/lib/server/MonitorLayout.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="84,5,275,30"/>
+<area shape="rect" id="Node000002" href="$MonitorGeometry_8h.html" title=" " alt="" coords="85,78,274,103"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="181,28,182,63,177,62,178,33"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="81,223,142,248"/>
+<area shape="poly" id="edge7_Node000001_Node000004" title=" " alt="" coords="139,33,98,52,56,80,27,112,11,151,8,163,11,174,22,188,36,201,69,219,65,222,33,205,18,192,6,177,3,163,6,150,22,109,52,76,96,47,143,29"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="21,151,74,175"/>
+<area shape="poly" id="edge9_Node000001_Node000005" title=" " alt="" coords="142,33,108,52,90,64,75,80,60,107,53,136,48,134,55,105,71,76,87,60,105,47,146,29"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="323,151,380,175"/>
+<area shape="poly" id="edge10_Node000001_Node000006" title=" " alt="" coords="207,28,248,48,288,76,316,106,339,138,334,137,312,109,284,80,245,53,207,33"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="349,78,415,103"/>
+<area shape="poly" id="edge8_Node000001_Node000007" title=" " alt="" coords="213,28,337,71,332,74,213,33"/>
+<area shape="rect" id="Node000003" href="$DirectionTypes_8h.html" title=" " alt="" coords="148,151,299,175"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="188,101,211,138,206,137,186,106"/>
+<area shape="poly" id="edge4_Node000002_Node000004" title=" " alt="" coords="171,101,155,126,139,152,119,210,115,207,134,150,151,123,168,105"/>
+<area shape="poly" id="edge5_Node000002_Node000005" title=" " alt="" coords="156,105,84,145,81,141,159,101"/>
+<area shape="poly" id="edge6_Node000002_Node000006" title=" " alt="" coords="208,101,311,143,306,145,208,106"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="208,175,144,217,142,212,202,177"/>
+</map>

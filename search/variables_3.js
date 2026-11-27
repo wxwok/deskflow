@@ -1,0 +1,23 @@
+var searchData=
+[
+  ['data_0',['data',['../structFingerprint.html#ac0a51b5ec53e509b02bb0ff329484340',1,'Fingerprint::data'],['../ArchNetworkWinsock_8cpp.html#aa36d05423b2dd8f3c8296093b4674b63',1,'data:&#160;ArchNetworkWinsock.cpp']]],
+  ['datachunk_1',['DataChunk',['../structChunkType.html#afca93ef4079887b13f65cde55cceefd9',1,'ChunkType']]],
+  ['dataend_2',['DataEnd',['../structChunkType.html#a2a7ac1c6af05a9342bde6de53dcc7e11',1,'ChunkType']]],
+  ['datastart_3',['DataStart',['../structChunkType.html#a0e7c9c3a39dd6ea0a772bf96d4695f80',1,'ChunkType']]],
+  ['defaultlocktocomputerstate_4',['DefaultLockToComputerState',['../structSettings_1_1Server.html#a6f083fd5c1a8b740729a1f18fa90a65d',1,'Settings::Server']]],
+  ['defaultlocktoscreenstate_5',['DefaultLockToScreenState',['../structSettings_1_1InternalConfig.html#a125435c0b860f9e03a613b2e152b133d',1,'Settings::InternalConfig']]],
+  ['deliverimmediately_6',['DeliverImmediately',['../structEvent_1_1EventFlags.html#a78b0f7049f5f8aa9ec6b27621f602aa8',1,'Event::EventFlags']]],
+  ['delta_7',['delta',['../structdeskflow_1_1detail_1_1AxisCandidate.html#a8fd334284def2e736ae3a917baab2b7c',1,'deskflow::detail::AxisCandidate::delta'],['../structdeskflow_1_1detail_1_1AxisOption.html#a36dae1aba7c78967b7c2320c76b4e4e6',1,'deskflow::detail::AxisOption::delta']]],
+  ['disabled_8',['Disabled',['../structSettings_1_1Computer.html#a9b009f18536c092526aaa61a7f173016',1,'Settings::Computer']]],
+  ['disablelocktocomputer_9',['DisableLockToComputer',['../structSettings_1_1Server.html#ae8dce7a9e20e27d87babab5dd2981b4c',1,'Settings::Server']]],
+  ['disablelocktoscreen_10',['DisableLockToScreen',['../structSettings_1_1InternalConfig.html#ad17f8e9f10be2db230028ca63d20cc92',1,'Settings::InternalConfig']]],
+  ['display_11',['Display',['../structSettings_1_1Core.html#a2a0059d3e150af140d0c1760df2dffab',1,'Settings::Core']]],
+  ['dontfreedata_12',['DontFreeData',['../structEvent_1_1EventFlags.html#a5831619089ed5d34a4b7618ed8dc6213',1,'Event::EventFlags']]],
+  ['droppedx_13',['droppedX',['../structdeskflow_1_1RelativePointerDelta.html#a913bb2b8d0e7c96642a1f6ea76533345',1,'deskflow::RelativePointerDelta']]],
+  ['droppedy_14',['droppedY',['../structdeskflow_1_1RelativePointerDelta.html#aa567bf6868530b2aae690ef554b73e37',1,'deskflow::RelativePointerDelta']]],
+  ['dummywindow_15',['dummyWindow',['../OSXCocoaApp_8m.html#ad6e36ef3cf11ae31babd3a200e7445c7',1,'OSXCocoaApp.m']]],
+  ['dword_16',['DWORD',['../ArchNetworkWinsock_8cpp.html#a268ed61838e67a46467dcebfee0dcbe7',1,'ArchNetworkWinsock.cpp']]],
+  ['dx_17',['dx',['../structdeskflow_1_1MonitorSnapResult.html#a570d5d5eaec60410376632aa5a0c54c7',1,'deskflow::MonitorSnapResult']]],
+  ['dy_18',['dy',['../structdeskflow_1_1MonitorSnapResult.html#aabba3e6d10318394cbc3d8a5a409b9b3',1,'deskflow::MonitorSnapResult']]],
+  ['dynamicconnectionretry_19',['DynamicConnectionRetry',['../structSettings_1_1Client.html#a61fd699998c132f63a53720201b640c0',1,'Settings::Client']]]
+];

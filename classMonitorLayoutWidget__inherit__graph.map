@@ -1,0 +1,5 @@
+<map id="MonitorLayoutWidget" name="MonitorLayoutWidget">
+<area shape="rect" id="Node000001" title="Drag computers so their monitors share one virtual desktop." alt="" coords="5,78,149,103"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="41,5,113,30"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="79,44,80,79,74,77,75,48"/>
+</map>

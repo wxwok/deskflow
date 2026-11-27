@@ -1,0 +1,36 @@
+<map id="src/lib/deskflow/IClient.h" name="src/lib/deskflow/IClient.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="342,5,506,30"/>
+<area shape="rect" id="Node000002" href="$ClipboardTypes_8h.html" title=" " alt="" coords="268,151,446,175"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="419,29,393,79,368,138,364,134,388,77,415,32"/>
+<area shape="rect" id="Node000004" href="$IComputer_8h.html" title=" " alt="" coords="402,78,552,103"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="433,28,462,66,457,65,432,33"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="688,223,741,248"/>
+<area shape="poly" id="edge21_Node000001_Node000007" title=" " alt="" coords="506,28,564,42,625,66,681,101,705,123,725,149,731,164,732,180,727,211,723,207,727,179,726,165,720,152,701,127,677,105,622,71,563,47,507,33"/>
+<area shape="rect" id="Node000009" href="$KeyTypes_8h.html" title=" " alt="" coords="786,78,931,103"/>
+<area shape="poly" id="edge12_Node000001_Node000009" title=" " alt="" coords="496,28,773,74,768,76,496,33"/>
+<area shape="rect" id="Node000012" href="$MouseTypes_8h.html" title=" " alt="" coords="5,78,168,103"/>
+<area shape="poly" id="edge16_Node000001_Node000012" title=" " alt="" coords="366,33,159,77,157,72,369,28"/>
+<area shape="rect" id="Node000013" href="$OptionTypes_8h.html" title=" " alt="" coords="84,151,244,175"/>
+<area shape="poly" id="edge18_Node000001_Node000013" title=" " alt="" coords="402,33,200,145,197,141,404,28"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="298,296,358,321"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="357,174,335,282,331,279,353,177"/>
+<area shape="poly" id="edge4_Node000004_Node000002" title=" " alt="" coords="460,102,391,145,389,140,455,104"/>
+<area shape="rect" id="Node000005" href="$MonitorGeometry_8h.html" title=" " alt="" coords="522,151,710,175"/>
+<area shape="poly" id="edge5_Node000004_Node000005" title=" " alt="" coords="500,101,582,143,577,143,500,106"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="365,223,421,248"/>
+<area shape="poly" id="edge11_Node000004_Node000008" title=" " alt="" coords="478,101,475,138,461,177,444,198,424,216,422,212,440,195,456,174,470,136,475,105"/>
+<area shape="poly" id="edge8_Node000005_Node000003" title=" " alt="" coords="620,174,624,211,620,232,610,250,593,262,569,273,506,289,436,300,374,306,373,301,435,295,505,284,567,268,591,258,606,246,615,230,619,211,617,178"/>
+<area shape="rect" id="Node000006" href="$DirectionTypes_8h.html" title=" " alt="" coords="446,223,596,248"/>
+<area shape="poly" id="edge6_Node000005_Node000006" title=" " alt="" coords="603,175,550,217,547,212,598,177"/>
+<area shape="poly" id="edge9_Node000005_Node000007" title=" " alt="" coords="633,173,688,214,683,214,631,178"/>
+<area shape="poly" id="edge10_Node000005_Node000008" title=" " alt="" coords="582,175,437,223,435,218,576,177"/>
+<area shape="poly" id="edge7_Node000006_Node000003" title=" " alt="" coords="492,248,374,293,372,288,487,249"/>
+<area shape="rect" id="Node000010" href="$KeyModifierID_8h.html" title=" " alt="" coords="866,151,1035,175"/>
+<area shape="poly" id="edge13_Node000009_Node000010" title=" " alt="" coords="874,101,926,142,921,141,873,106"/>
+<area shape="rect" id="Node000011" title=" " alt="" coords="858,223,921,248"/>
+<area shape="poly" id="edge15_Node000009_Node000011" title=" " alt="" coords="858,101,854,136,857,175,874,212,869,209,852,176,849,136,854,105"/>
+<area shape="poly" id="edge14_Node000010_Node000011" title=" " alt="" coords="943,175,910,214,908,209,938,177"/>
+<area shape="poly" id="edge17_Node000012_Node000003" title=" " alt="" coords="79,105,70,137,69,156,74,174,94,200,117,222,173,258,231,282,285,299,280,299,230,287,171,262,114,227,90,203,69,177,63,157,65,136,81,100"/>
+<area shape="poly" id="edge19_Node000013_Node000003" title=" " alt="" coords="178,173,306,285,301,287,176,178"/>
+<area shape="poly" id="edge20_Node000013_Node000008" title=" " alt="" coords="202,173,352,220,348,222,201,179"/>
+</map>

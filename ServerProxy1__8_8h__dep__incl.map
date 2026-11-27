@@ -1,0 +1,11 @@
+<map id="src/lib/client/ServerProxy1_8.h" name="src/lib/client/ServerProxy1_8.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="98,5,298,30"/>
+<area shape="rect" id="Node000002" href="$ServerProxy1__8_8cpp.html" title=" " alt="" coords="5,78,180,117"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="168,41,120,79,116,75,172,37"/>
+<area shape="rect" id="Node000003" href="$ServerProxy1__9_8h.html" title=" " alt="" coords="204,85,403,110"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="226,36,290,84,285,85,225,42"/>
+<area shape="rect" id="Node000004" href="$Client_8cpp.html" title=" " alt="" coords="132,172,285,196"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="282,119,222,174,220,169,277,121"/>
+<area shape="rect" id="Node000005" href="$ServerProxy1__9_8cpp.html" title=" " alt="" coords="309,165,484,203"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="328,117,379,165,373,164,326,122"/>
+</map>
