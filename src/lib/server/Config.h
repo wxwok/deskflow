@@ -11,13 +11,16 @@
 #include "base/BaseException.h"
 #include "base/String.h"
 #include "deskflow/IPlatformComputer.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/OptionTypes.h"
 #include "net/NetworkAddress.h"
 #include "server/InputFilter.h"
 
+#include <cstdint>
 #include <iosfwd>
 #include <map>
 #include <set>
+#include <vector>
 
 namespace deskflow::server {
 class Config;
@@ -298,6 +301,9 @@ public:
   */
   virtual bool isComputer(const std::string &name) const;
 
+  //! A disabled computer stays in the configuration, but links and hotkeys must not target it.
+  bool isComputerDisabled(const std::string &name) const;
+
   //! Test for canonical computer name
   /*!
   Returns true iff \c name is the canonical name of a computer.
@@ -334,6 +340,41 @@ public:
   the edge given by the direction.
   */
   bool hasNeighbor(const std::string &, Direction, float start, float end) const;
+
+  //! One computer's monitors placed on the shared virtual desktop.
+  /*!
+  \c originX/Y is added to each monitor's local coordinates. Monitors stay
+  in the arrangement reported by that computer.
+  */
+  struct MonitorPlacement
+  {
+    int32_t originX = 0;
+    int32_t originY = 0;
+    std::vector<deskflow::MonitorRect> monitors;
+    //! Higher values are drawn and hit-tested in front. Omitted in old files, which means 0.
+    int32_t z = 0;
+
+    bool operator==(const MonitorPlacement &) const = default;
+  };
+
+  using MonitorPlacementMap = std::map<std::string, MonitorPlacement, deskflow::string::CaselessCmp>;
+
+  //! Replace one computer in the monitor layout. Empty monitors removes it.
+  void setMonitorPlacement(
+      const std::string &name, int32_t originX, int32_t originY, std::vector<deskflow::MonitorRect> monitors,
+      int32_t z = 0
+  );
+
+  //! Drop the monitor layout so neighbour links control pointer switching.
+  void clearMonitorLayout();
+
+  //! True when a \c section: layout was configured.
+  bool hasMonitorLayout() const;
+
+  const MonitorPlacementMap &monitorPlacements() const
+  {
+    return m_monitorPlacements;
+  }
 
   //! Get beginning neighbor iterator
   link_const_iterator beginNeighbor(const std::string &) const;
@@ -399,6 +440,7 @@ private:
   void readSectionScreens(ConfigReadContext &);
   void readSectionLinks(ConfigReadContext &);
   void readSectionAliases(ConfigReadContext &);
+  void readSectionLayout(ConfigReadContext &);
 
   InputFilter::Condition *
   parseCondition(const ConfigReadContext &, const std::string &condition, const std::vector<std::string> &args);
@@ -410,11 +452,15 @@ private:
   void parseComputers(const ConfigReadContext &, const std::string_view &, std::set<std::string> &computers) const;
 
 private:
+  using DisabledSet = std::set<std::string, deskflow::string::CaselessCmp>;
+
   CellMap m_map;
   NameMap m_nameToCanonicalName;
+  DisabledSet m_disabled;
   NetworkAddress m_deskflowAddress;
   ScreenOptions m_globalOptions;
   InputFilter m_inputFilter;
+  MonitorPlacementMap m_monitorPlacements;
   bool m_hasLockToComputerAction = false;
   IEventQueue *m_events;
 };
@@ -451,6 +497,19 @@ public:
     return m_stream;
   };
 
+  void skipRule()
+  {
+    m_skipRule = true;
+  }
+  bool ruleSkipped() const
+  {
+    return m_skipRule;
+  }
+  void resetRuleSkip()
+  {
+    m_skipRule = false;
+  }
+
 private:
   // not implemented
   ConfigReadContext &operator=(const ConfigReadContext &);
@@ -459,7 +518,8 @@ private:
 
 private:
   std::istream &m_stream;
-  int32_t m_line;
+  int32_t m_line = 0;
+  bool m_skipRule = false;
 };
 
 //! Configuration stream read exception

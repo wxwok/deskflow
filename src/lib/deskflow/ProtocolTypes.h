@@ -45,7 +45,7 @@ static const int16_t kProtocolMajorVersion = 1;
  * @note When incrementing the minor version, the Deskflow application version should also increment
  * @since Protocol version 1.0
  */
-static const int16_t kProtocolMinorVersion = 8;
+static const int16_t kProtocolMinorVersion = 9;
 
 /**
  * @brief Default TCP port for Deskflow connections
@@ -991,6 +991,27 @@ extern const char *const kMsgDClipboard;
  * @since Protocol version 1.0
  */
 extern const char *const kMsgDInfo;
+
+/**
+ * @brief Per-monitor geometry
+ *
+ * **Message Code**: `"DMON"`
+ * **Direction**: Secondary → Primary
+ * **Format**: `"DMON%2i"` followed by `count` records of `"%s%4i%4i%4i%4i"`
+ * **Parameters**:
+ * - count (2 bytes, unsigned): number of monitors
+ * - each monitor: name (string), x, y, width, height (4 bytes each, signed)
+ *
+ * Coordinates are in the secondary computer's own pixel space, the same
+ * space as kMsgDInfo. Width and height are positive. A monitor name may
+ * be empty. Sent immediately after every kMsgDInfo when both peers
+ * negotiated protocol 1.9 or newer. Older peers never send or expect it,
+ * and keep the single bounding rectangle from kMsgDInfo.
+ *
+ * @see kMsgDInfo
+ * @since Protocol version 1.9
+ */
+extern const char *const kMsgDMonitors;
 
 /**
  * @brief Set client options

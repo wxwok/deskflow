@@ -6,6 +6,14 @@ if(WIN32)
 endif()
 
 create_test(
+  NAME MonitorLayoutTests
+  DEPENDS server
+  LIBS base arch ${extra_libs}
+  SOURCE MonitorLayoutTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
+)
+
+create_test(
   NAME ServerConfigTests
   DEPENDS server
   LIBS base arch ${extra_libs}
@@ -18,6 +26,14 @@ create_test(
   DEPENDS server
   LIBS base arch ${extra_libs}
   SOURCE ServerTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
+)
+
+create_test(
+  NAME ActiveClientWatchTests
+  DEPENDS server
+  LIBS base arch ${extra_libs}
+  SOURCE ActiveClientWatchTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
 )
 

@@ -16,6 +16,7 @@
 #include "deskflow/KeyTypes.h"
 #include "deskflow/MouseTypes.h"
 #include "server/Config.h"
+#include "server/MonitorLayout.h"
 
 #include <climits>
 #include <map>
@@ -221,8 +222,8 @@ private:
   // returns the jump zone of the client
   int32_t getJumpZoneSize(const BaseClientProxy *) const;
 
-  // change the active m_computer
-  void switchComputer(BaseClientProxy *, int32_t x, int32_t y, bool forScreenSaver);
+  // change the active m_computer. \p notifyLeave is false when \c m_active has already disconnected.
+  void switchComputer(BaseClientProxy *, int32_t x, int32_t y, bool forScreenSaver, bool notifyLeave = true);
 
   // jump to computer
   void jumpToComputer(BaseClientProxy *);
@@ -253,6 +254,28 @@ private:
   // adjusts x and y or neither to avoid ending up in a jump zone
   // after entering the client in the given direction.
   void avoidJumpZone(const BaseClientProxy *, Direction, int32_t &x, int32_t &y) const;
+
+  // Nudge \p x,\p y inward when \p travel lands on a switchable edge of the primary.
+  void avoidJumpZoneLayout(BaseClientProxy *dst, Direction travel, int32_t &x, int32_t &y) const;
+
+  // Switch using a monitor-layout crossing. Returns true if the pointer moved.
+  bool switchByLayout(const deskflow::MonitorCrossing &crossing, int32_t xActive, int32_t yActive);
+
+  // Rebuild the runtime layout from connected computers and tell the primary.
+  void rebuildMonitorLayout();
+
+  // Move the pointer to the highest available stacked layer at its current point.
+  // \p currentIsDead skips telling the active computer to leave.
+  bool retargetStackedLayer(const std::string &trigger, const char *cause, bool currentIsDead);
+
+  bool layoutGlobal(const std::string &name, int32_t x, int32_t y, int32_t &globalX, int32_t &globalY) const;
+
+  std::vector<deskflow::StackCandidate> stackCandidatesAt(int32_t globalX, int32_t globalY) const;
+
+  // Tell the GUI the latest per-monitor geometry for every connected computer.
+  void publishMonitorGeometry() const;
+
+  BaseClientProxy *clientByCanonicalName(const std::string &name) const;
 
   // test if a switch is permitted.  this includes testing user
   // options like switch delay and tracking any state required to
@@ -316,6 +339,7 @@ private:
   void handleMotionSecondaryEvent(const Event &event);
   void handleWheelEvent(const Event &event);
   void handleSwitchWaitTimeout();
+  void handleActiveClientWatch();
   void handleClientDisconnected(BaseClientProxy *client);
   void handleClientCloseTimeout(BaseClientProxy *client);
   void handleSwitchToComputerEvent(const Event &event);
@@ -359,6 +383,8 @@ private:
   // force the cursor off of \p client
   void forceLeaveClient(const BaseClientProxy *client);
 
+  double activeClientTimeoutSeconds() const;
+
 private:
   class ClipboardInfo
   {
@@ -382,6 +408,9 @@ private:
   // current configuration
   ServerConfig *m_config = nullptr;
 
+  // Opt-in per-monitor placement. Empty unless the config has section: layout.
+  MonitorLayout m_monitorLayout;
+
   // input filter (from m_config);
   InputFilter *m_inputFilter = nullptr;
 
@@ -391,6 +420,10 @@ private:
   BaseClientProxy *m_switchComputer = nullptr;
   double m_switchWaitDelay = 0.0;
   EventQueueTimer *m_switchWaitTimer = nullptr;
+  EventQueueTimer *m_activeClientWatchTimer = nullptr;
+  // True after a watchdog return has started, until the pointer is home.
+  // Stops a reconnect during that window from starting a second return.
+  bool m_forcedReturn = false;
 
   // delay for double-tap computer switching
   double m_switchTwoTapDelay = 0.0;
@@ -464,6 +497,12 @@ private:
 
   // computer locking (former scroll lock)
   bool m_lockedToComputer = false;
+
+  // True after the pointer position on m_active has been recorded.
+  bool m_stackCursorValid = false;
+
+  // Guards retargetStackedLayer against re-entry from enter/leave.
+  bool m_stackRetargeting = false;
 
   bool m_defaultLockToComputerState = false;
   bool m_disableLockToComputer = false;

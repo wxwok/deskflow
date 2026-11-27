@@ -13,7 +13,7 @@
 #include "base/Log.h"
 #include "client/ServerProxy.h"
 #include "client/ServerProxy1_7.h"
-#include "client/ServerProxy1_8.h"
+#include "client/ServerProxy1_9.h"
 #include "common/NetworkProtocol.h"
 #include "common/Settings.h"
 #include "deskflow/Clipboard.h"
@@ -209,6 +209,11 @@ bool Client::getClipboard(ClipboardID id, IClipboard *clipboard) const
 void Client::getShape(int32_t &x, int32_t &y, int32_t &w, int32_t &h) const
 {
   m_computer->getShape(x, y, w, h);
+}
+
+std::vector<deskflow::MonitorRect> Client::getMonitors() const
+{
+  return m_computer->getMonitors();
 }
 
 void Client::getCursorPos(int32_t &x, int32_t &y) const
@@ -482,6 +487,9 @@ bool Client::setupComputer(int16_t protocolMinor)
     break;
   case 8:
     m_server = new ServerProxy1_8(this, m_stream, m_events);
+    break;
+  case 9:
+    m_server = new ServerProxy1_9(this, m_stream, m_events);
     break;
   default:
     break;

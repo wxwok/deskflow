@@ -13,6 +13,7 @@
 #include "common/Hotkey.h"
 #include "common/KeySequence.h"
 #include "config/ServerConfig.h"
+#include "gui/config/LayoutClients.h"
 
 #include <QTimer>
 
@@ -40,19 +41,19 @@ ActionDialog::ActionDialog(QWidget *parent, const ServerConfig &config, Hotkey &
   ui->comboActionType->setCurrentIndex(m_action.type());
   ui->comboTriggerOn->setCurrentIndex(m_action.activeOnRelease());
 
-  for (const Computer &computer : config.computers()) {
-    if (computer.isNull())
-      continue;
-    auto *newListItem = new QListWidgetItem(computer.name());
+  Q_UNUSED(config)
+  // Hotkey targets come from the general computer table, not the grid or a server-config screens section.
+  for (const auto &computerName : deskflow::hotkeyTargetNames()) {
+    auto *newListItem = new QListWidgetItem(computerName);
     newListItem->setCheckState(Qt::Checked);
-    if ((m_action.typeComputerNames().indexOf(computer.name()) == -1) &&
+    if ((m_action.typeComputerNames().indexOf(computerName) == -1) &&
         (m_action.haveComputers() && !m_action.typeComputerNames().isEmpty()))
       newListItem->setCheckState(Qt::Unchecked);
 
     ui->listComputers->addItem(newListItem);
 
-    ui->comboSwitchToComputer->addItem(tr("Switch to %1").arg(computer.name()), computer.name());
-    if (computer.name() == m_action.switchComputerName())
+    ui->comboSwitchToComputer->addItem(tr("Switch to %1").arg(computerName), computerName);
+    if (computerName == m_action.switchComputerName())
       ui->comboSwitchToComputer->setCurrentIndex(ui->comboSwitchToComputer->count() - 1);
   }
 

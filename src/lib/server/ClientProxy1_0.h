@@ -9,8 +9,12 @@
 #pragma once
 
 #include "deskflow/Clipboard.h"
+#include "deskflow/MonitorGeometry.h"
 #include "deskflow/ProtocolTypes.h"
 #include "server/ClientProxy.h"
+
+#include <chrono>
+#include <vector>
 
 class Event;
 class EventQueueTimer;
@@ -31,6 +35,7 @@ public:
   // IComputer
   bool getClipboard(ClipboardID id, IClipboard *) const override;
   void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const override;
+  std::vector<deskflow::MonitorRect> getMonitors() const override;
   void getCursorPos(int32_t &x, int32_t &y) const override;
 
   // IClient overrides
@@ -54,6 +59,7 @@ public:
   void fileChunkSending(uint8_t mark, char *data, size_t dataSize) override;
   std::string getSecureInputApp() const override;
   void secureInputNotification(const std::string &app) const override;
+  double secondsSinceLastMessage() const override;
 
 protected:
   virtual bool parseHandshakeMessage(const uint8_t *code);
@@ -65,6 +71,11 @@ protected:
   virtual void addHeartbeatTimer();
   virtual void removeHeartbeatTimer();
   virtual bool recvClipboard();
+  void setMonitors(std::vector<deskflow::MonitorRect> monitors);
+  IEventQueue *eventQueue() const
+  {
+    return m_events;
+  }
 
 private:
   void disconnect();
@@ -74,6 +85,7 @@ private:
   void handleDisconnect();
   void handleWriteError();
   void handleFlatline();
+  void noteClientMessage();
 
   bool recvInfo();
   bool recvGrabClipboard();
@@ -96,8 +108,10 @@ private:
   using MessageParser = bool (ClientProxy1_0::*)(const uint8_t *);
 
   ClientInfo m_info;
+  std::vector<deskflow::MonitorRect> m_monitors;
   double m_heartbeatAlarm;
   EventQueueTimer *m_heartbeatTimer = nullptr;
+  std::chrono::steady_clock::time_point m_lastMessage{};
   MessageParser m_parser = &ClientProxy1_0::parseHandshakeMessage;
   IEventQueue *m_events;
 };

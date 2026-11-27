@@ -114,6 +114,10 @@ public:
     inline static const auto GridHeight = QStringLiteral("server/gridHeight");
     inline static const auto GridWidth = QStringLiteral("server/gridWidth");
     inline static const auto Heartbeat = QStringLiteral("server/heartbeat");
+    // Milliseconds of silence from the computer that has the pointer before the
+    // server takes the pointer back. Also caps the keep-alive flatline timer.
+    // 0 disables both. Default is 5000. Other values are clamped to 1s..120s.
+    inline static const auto ActiveClientTimeout = QStringLiteral("server/activeClientTimeout");
     inline static const auto Protocol = QStringLiteral("server/protocol");
     inline static const auto RelativeMouseMoves = QStringLiteral("server/relativeMouseMoves");
     inline static const auto SwitchDelay = QStringLiteral("server/switchDelay");
@@ -143,6 +147,8 @@ public:
     inline static const auto SwitchCornerBottomRight = QStringLiteral("computer_%1/switchCornerBottomRight");
     inline static const auto WeakX11Focus = QStringLiteral("computer_%1/weakX11Focus");
     inline static const auto XtestIsXineramaUnaware = QStringLiteral("computer_%1/xtestIsXineramaUnaware");
+    // Absent or false means the computer participates in pointer switching.
+    inline static const auto Disabled = QStringLiteral("computer_%1/disabled");
   };
 
   // Track Removed keys to make upgrading config easier
@@ -164,6 +170,7 @@ public:
     inline static const auto RelativeMouseMoves = QStringLiteral("internalConfig/relativeMouseMoves");
     inline static const auto Protocol = QStringLiteral("internalConfig/protocol");
     inline static const auto ClipboardSharingSize = QStringLiteral("internalConfig/clipboardSharingSize");
+    inline static const auto ConnectedClients = QStringLiteral("internalConfig/connectedClients");
   };
 
   // Enums types used in settings
@@ -215,6 +222,8 @@ public:
   static void removeUnknownComputers(const QStringList &knownComputers);
   static QVariant computerDefaults(const QString &key);
   static QStringList knownComputers();
+  //! The QSettings object Settings::value reads. Layout writes update this and the proxy.
+  static QSettings &store();
 
 Q_SIGNALS:
   void settingsChanged(const QString key);
@@ -330,6 +339,7 @@ private:
     , Server::GridHeight
     , Server::GridWidth
     , Server::Heartbeat
+    , Server::ActiveClientTimeout
     , Server::Protocol
     , Server::RelativeMouseMoves
     , Server::SwitchDelay

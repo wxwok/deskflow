@@ -152,10 +152,12 @@ elseif(UNIX)
       EiEventQueueBuffer.h
       EiKeyState.cpp
       EiKeyState.h
+      EiRelativePointer.h
     )
     # The Portal sources also require EI.
     if(LIBPORTAL_FOUND)
       list(APPEND PLATFORM_SOURCES
+        InputCaptureRecovery.h
         PortalInputCapture.cpp
         PortalInputCapture.h
         PortalRemoteDesktop.cpp

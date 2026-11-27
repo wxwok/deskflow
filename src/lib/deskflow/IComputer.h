@@ -9,6 +9,9 @@
 #pragma once
 
 #include "deskflow/ClipboardTypes.h"
+#include "deskflow/MonitorGeometry.h"
+
+#include <vector>
 
 class IClipboard;
 
@@ -49,6 +52,24 @@ public:
   \c y and the size of the computer in \c width and \c height.
   */
   virtual void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const = 0;
+
+  //! Monitors in this computer's own coordinate space.
+  /*!
+  The default is a single rectangle covering getShape(). Platforms and
+  protocol 1.9 peers override this with one rectangle per monitor.
+  */
+  virtual std::vector<deskflow::MonitorRect> getMonitors() const
+  {
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    getShape(x, y, width, height);
+    if (width <= 0 || height <= 0) {
+      return {};
+    }
+    return {deskflow::MonitorRect{"", x, y, width, height}};
+  }
 
   //! Get cursor position
   /*!

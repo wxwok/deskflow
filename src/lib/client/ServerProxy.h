@@ -63,6 +63,12 @@ protected:
 
   virtual ConnectionResult parseHandshakeMessage(const uint8_t *code);
   virtual ConnectionResult parseMessage(const uint8_t *code);
+  virtual void queryInfo();
+  void sendInfo(const ClientInfo &);
+  Client *client() const
+  {
+    return m_client;
+  }
   void keyDown(uint16_t id, uint16_t mask, uint16_t button, const std::string &lang);
   void keyRepeat(uint16_t id, uint16_t mask, uint16_t count, uint16_t button, const std::string &lang);
 
@@ -74,8 +80,6 @@ protected:
 private:
   // if compressing mouse motion then send the last motion now
   void flushCompressedMouse();
-
-  void sendInfo(const ClientInfo &);
 
   void resetKeepAliveAlarm();
   void setKeepAliveRate(double);
@@ -105,7 +109,6 @@ private:
   void screensaver();
   void resetOptions();
   void setOptions();
-  void queryInfo();
   void infoAcknowledgment();
 
 private:

@@ -43,6 +43,8 @@ const char *const kMsgDMouseWheel = "DMWM%2i%2i";
 const char *const kMsgDMouseWheel1_0 = "DMWM%2i";
 const char *const kMsgDClipboard = "DCLP%1i%4i%1i%s";
 const char *const kMsgDInfo = "DINF%2i%2i%2i%2i%2i%2i%2i";
+// Count, then `count` repeats of "%s%4i%4i%4i%4i" (name, x, y, width, height).
+const char *const kMsgDMonitors = "DMON%2i";
 const char *const kMsgDSetOptions = "DSOP%4I";
 const char *const kMsgDFileTransfer = "DFTR%1i%s";
 const char *const kMsgDDragInfo = "DDRG%2i%s";

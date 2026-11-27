@@ -13,6 +13,7 @@
 #include "base/TMethodJob.h"
 #include "common/Settings.h"
 #include "deskflow/ClipboardTypes.h"
+#include "deskflow/MonitorGeometry.h"
 #include "platform/EiClipboard.h"
 
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
@@ -21,7 +22,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
+#include <memory>
 #include <poll.h>
 #include <sys/socket.h> // for EIS fd hack, remove
 #include <sys/un.h>     // for EIS fd hack, remove
@@ -70,6 +73,11 @@ int PortalInputCapture::scaleCoordinateBetweenRanges(
 
 bool PortalInputCapture::getPortalBounds(Bounds &bounds) const
 {
+  if (m_hasZoneUnion) {
+    bounds = m_zoneUnion;
+    return bounds.right > bounds.left && bounds.bottom > bounds.top;
+  }
+
   if (m_barrierInfo.empty()) {
     return false;
   }
@@ -187,33 +195,147 @@ PortalInputCapture::PortalInputCapture(EiComputer *computer, IEventQueue *events
   g_idle_add(captureCallback, this);
 }
 
+void PortalInputCapture::setSwitchEdges(std::vector<deskflow::EdgeSpan> edges)
+{
+  bool schedule = false;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_switchEdges = std::move(edges);
+    m_monitorEdges = !m_switchEdges.empty();
+    if (m_glibMainLoop != nullptr && m_portalAlive.load() && !m_rebuildQueued) {
+      m_rebuildQueued = true;
+      schedule = true;
+    }
+  }
+  if (!schedule) {
+    return;
+  }
+
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_rebuildQueued = false;
+          self->m_rebuildIdle = 0;
+        }
+        if (self->m_portalAlive.load() && self->m_session != nullptr) {
+          self->handleZonesChanged(self->m_session, nullptr);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  std::lock_guard lock(m_edgeMutex);
+  m_rebuildIdle = idle;
+}
+
+std::vector<deskflow::EdgeSpan> PortalInputCapture::switchEdges() const
+{
+  std::lock_guard lock(m_edgeMutex);
+  return m_switchEdges;
+}
+
 PortalInputCapture::~PortalInputCapture()
 {
-  if (g_main_loop_is_running(m_glibMainLoop))
-    g_main_loop_quit(m_glibMainLoop);
+  m_portalAlive.store(false);
+  guint idle = 0;
+  guint releaseIdle = 0;
+  guint barrierRetry = 0;
+  guint deferredBarrierIdle = 0;
+  guint reenableTimeout = 0;
+  std::shared_ptr<CaptureRelease> releaseJob = takeReleaseJob(releaseIdle);
+  {
+    std::lock_guard lock(m_edgeMutex);
+    idle = m_rebuildIdle;
+    m_rebuildIdle = 0;
+    barrierRetry = m_barrierRetry;
+    m_barrierRetry = 0;
+    deferredBarrierIdle = m_deferredBarrierIdle;
+    m_deferredBarrierIdle = 0;
+    m_deferredBarrierToken.reset();
+    reenableTimeout = m_reenableTimeout;
+    m_reenableTimeout = 0;
+  }
+  if (idle != 0) {
+    g_source_remove(idle);
+  }
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+  if (barrierRetry != 0) {
+    g_source_remove(barrierRetry);
+  }
+  if (deferredBarrierIdle != 0) {
+    g_source_remove(deferredBarrierIdle);
+  }
+  if (reenableTimeout != 0) {
+    g_source_remove(reenableTimeout);
+  }
+
+  // Ask the glib thread to Release and Close before it exits. A layout save
+  // restarts the core only after this process has exited; the compositor has
+  // to drop the old capture first. Closing from here also runs when recovery
+  // deletes this session to build a new one.
+  const bool glibRunning = m_glibMainLoop != nullptr && g_main_loop_is_running(m_glibMainLoop);
+  if (glibRunning) {
+    g_idle_add(
+        [](gpointer data) -> gboolean {
+          auto *self = static_cast<PortalInputCapture *>(data);
+          self->releaseAndCloseSession();
+          if (self->m_glibMainLoop != nullptr && g_main_loop_is_running(self->m_glibMainLoop)) {
+            g_main_loop_quit(self->m_glibMainLoop);
+          }
+          return G_SOURCE_REMOVE;
+        },
+        this
+    );
+  } else {
+    releaseAndCloseSession();
+  }
 
   if (m_glibThread) {
-    m_glibThread->cancel();
-    m_glibThread->wait();
+    // Do not cancel before the close idle runs. pthread_cancel inside poll
+    // skips that idle and the compositor keeps the capture.
+    if (glibRunning && !m_glibThread->wait(2.0)) {
+      m_glibThread->cancel();
+      m_glibThread->wait();
+    } else if (!glibRunning) {
+      m_glibThread->wait();
+    }
     m_glibThread = nullptr;
 
-    g_main_loop_unref(m_glibMainLoop);
-    m_glibMainLoop = nullptr;
+    if (m_glibMainLoop != nullptr) {
+      g_main_loop_unref(m_glibMainLoop);
+      m_glibMainLoop = nullptr;
+    }
+  }
+
+  if (!m_sessionClosed) {
+    releaseAndCloseSession();
   }
 
   if (m_session) {
     using enum Signal;
     XdpSession *parentSession = xdp_input_capture_session_get_session(m_session);
-    if (m_signals.at(SessionClosed) != 0)
-      g_signal_handler_disconnect(parentSession, m_signals.at(SessionClosed));
-    g_signal_handler_disconnect(m_session, m_signals.at(Disabled));
-    g_signal_handler_disconnect(m_session, m_signals.at(Activated));
-    g_signal_handler_disconnect(m_session, m_signals.at(Deactivated));
-    g_signal_handler_disconnect(m_session, m_signals.at(ZonesChanged));
+    auto disconnectIfSet = [](gpointer instance, gulong &handler) {
+      if (handler != 0 && instance != nullptr) {
+        g_signal_handler_disconnect(instance, handler);
+      }
+      handler = 0;
+    };
+    disconnectIfSet(parentSession, m_signals.at(SessionClosed));
+    disconnectIfSet(m_session, m_signals.at(Disabled));
+    disconnectIfSet(m_session, m_signals.at(Activated));
+    disconnectIfSet(m_session, m_signals.at(Deactivated));
+    disconnectIfSet(m_session, m_signals.at(ZonesChanged));
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
-    g_signal_handler_disconnect(parentSession, m_signals.at(SelectionTransfer));
+    disconnectIfSet(parentSession, m_signals.at(SelectionTransfer));
 #endif
     g_object_unref(m_session);
+    m_session = nullptr;
   }
 
   for (auto b : m_barriers) {
@@ -239,10 +361,58 @@ gboolean PortalInputCapture::timeoutHandler() const
   return true; // keep re-triggering
 }
 
+void PortalInputCapture::releaseAndCloseSession()
+{
+  if (m_sessionClosed || m_session == nullptr) {
+    m_sessionClosed = true;
+    return;
+  }
+  m_sessionClosed = true;
+
+  using enum Signal;
+  XdpSession *parentSession = xdp_input_capture_session_get_session(m_session);
+  auto disconnectIfSet = [](gpointer instance, gulong &handler) {
+    if (handler != 0 && instance != nullptr) {
+      g_signal_handler_disconnect(instance, handler);
+    }
+    handler = 0;
+  };
+  // Drop "closed" before Close(). Otherwise the handler treats our own
+  // shutdown as the portal dying and quits the whole core.
+  disconnectIfSet(parentSession, m_signals.at(SessionClosed));
+  disconnectIfSet(m_session, m_signals.at(Disabled));
+  disconnectIfSet(m_session, m_signals.at(Activated));
+  disconnectIfSet(m_session, m_signals.at(Deactivated));
+  disconnectIfSet(m_session, m_signals.at(ZonesChanged));
+#ifdef HAVE_LIBPORTAL_CLIPBOARD
+  disconnectIfSet(parentSession, m_signals.at(SelectionTransfer));
+#endif
+
+  if (m_recovery.captured() || m_recovery.emulating()) {
+    const auto id = m_recovery.activationId();
+    LOG_INFO("releasing input capture session before it is destroyed, id=%u", id);
+    xdp_input_capture_session_release(m_session, id);
+  }
+  if (parentSession != nullptr) {
+    LOG_INFO("closing input capture portal session");
+    xdp_session_close(parentSession);
+  }
+}
+
 void PortalInputCapture::handleSessionClosed(XdpSession *session)
 {
+  if (m_glibMainLoop != nullptr) {
+    g_main_loop_quit(m_glibMainLoop);
+  }
+  if (!m_portalAlive.load()) {
+    LOG_DEBUG("portal input capture session closed during shutdown");
+    if (m_signals.at(Signal::SessionClosed) != 0) {
+      g_signal_handler_disconnect(session, m_signals.at(Signal::SessionClosed));
+      m_signals.at(Signal::SessionClosed) = 0;
+    }
+    return;
+  }
   LOG_ERR("portal input capture session was closed, exiting");
-  g_main_loop_quit(m_glibMainLoop);
   m_events->addEvent(Event(EventTypes::Quit));
 
   g_signal_handler_disconnect(session, m_signals.at(Signal::SessionClosed));
@@ -278,7 +448,7 @@ void PortalInputCapture::readClipboardSelection(XdpSession *session) const
 void PortalInputCapture::handleSelectionTransfer(XdpSession *session, const char *mimeType, uint32_t serial) const
 {
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
-  if (m_isActive) {
+  if (m_recovery.captured()) {
     LOG_DEBUG("skipping clipboard selection transfer, clipboard is active");
     return;
   }
@@ -384,6 +554,11 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
 {
   g_autoptr(GError) error = nullptr;
 
+  const auto requested = static_cast<int>(m_barriers.size());
+  // GNOME returns every barrier as failed with "Session already enabled"
+  // when this call happens after Enable(). Remember that before enable()
+  // below flips the flag.
+  const bool sessionWasEnabled = m_enabled;
   auto failed_list = xdp_input_capture_session_set_pointer_barriers_finish(m_session, res, &error);
   if (failed_list) {
     auto it = failed_list;
@@ -412,6 +587,34 @@ void PortalInputCapture::handleSetPointerBarriers(const GObject *, GAsyncResult 
   g_list_free_full(failed_list, g_object_unref);
 
   enable();
+
+  if (requested > 0 && m_barriers.empty() && sessionWasEnabled) {
+    // Retrying SetPointerBarriers fails the same way. Disable() is not a
+    // workaround: on GNOME it leaves the pointer grabbed and EIS silent
+    // (mutter#3908). Recreate the session after the grab is gone.
+    const auto rebuild = m_recovery.noteEnabledSessionRejectedBarriers();
+    if (rebuild == InputCaptureRecovery::SessionRebuild::Now) {
+      LOG_INFO(
+          "all pointer barriers were rejected because the input capture session is already enabled; "
+          "recreating the session"
+      );
+      m_computer->scheduleInputCaptureRecreate();
+    } else {
+      LOG_INFO(
+          "all pointer barriers were rejected because the input capture session is already enabled; "
+          "recreating the session after the pointer is released"
+      );
+    }
+    return;
+  }
+
+  // A grab that is still active makes mutter reject the whole set ("failed to
+  // apply barrier"). Retry once we are idle; a second total failure is geometry
+  // and retrying it would loop.
+  if (requested > 0 && m_barriers.empty() && m_recovery.noteAllBarriersRejected()) {
+    LOG_INFO("all pointer barriers were rejected; retrying once input capture is idle");
+    scheduleBarrierRetry();
+  }
 }
 
 std::pair<int, int>
@@ -445,9 +648,47 @@ PortalInputCapture::mapPortalActivationToComputerPosition(guint barrierId, doubl
     y = std::clamp(y, zoneTop, zoneBottom);
   }
 
-  // The portal reports per-output zones, while Deskflow models the whole computer as one computer.
-  // Use the activated barrier to preserve the intended switch direction in Deskflow's aggregate coordinates.
+  // Monitor layout keeps the pointer on the monitor that was actually touched.
+  // Legacy mode collapses every barrier onto the bounding-box edge the neighbour links use.
   using enum BarrierSide;
+  if (monitorEdges()) {
+    int scaledLeft = zoneLeft;
+    int scaledRight = zoneRight;
+    int scaledTop = zoneTop;
+    int scaledBottom = zoneBottom;
+    if (Bounds portalBounds; getPortalBounds(portalBounds)) {
+      scaledLeft = scaleCoordinateBetweenRanges(
+          zoneLeft, portalBounds.left, portalBounds.right, computerX, computerX + computerW - 1
+      );
+      scaledRight = scaleCoordinateBetweenRanges(
+          zoneRight, portalBounds.left, portalBounds.right, computerX, computerX + computerW - 1
+      );
+      scaledTop = scaleCoordinateBetweenRanges(
+          zoneTop, portalBounds.top, portalBounds.bottom, computerY, computerY + computerH - 1
+      );
+      scaledBottom = scaleCoordinateBetweenRanges(
+          zoneBottom, portalBounds.top, portalBounds.bottom, computerY, computerY + computerH - 1
+      );
+    }
+    switch (it->side) {
+    case Left:
+      x = scaledLeft;
+      break;
+    case Right:
+      x = scaledRight;
+      break;
+    case Top:
+      y = scaledTop;
+      break;
+    case Bottom:
+      y = scaledBottom;
+      break;
+    }
+    x = std::clamp(x, std::min(scaledLeft, scaledRight), std::max(scaledLeft, scaledRight));
+    y = std::clamp(y, std::min(scaledTop, scaledBottom), std::max(scaledTop, scaledBottom));
+    return {x, y};
+  }
+
   switch (it->side) {
   case Left:
     x = computerX;
@@ -464,6 +705,121 @@ PortalInputCapture::mapPortalActivationToComputerPosition(guint barrierId, doubl
   }
 
   return {x, y};
+}
+
+void PortalInputCapture::nudgeMappedReleaseAwayFromBarriers(double &x, double &y) const
+{
+  // Matches Server::avoidJumpZoneLayout half-monitor inset; helper clamps to half-zone.
+  constexpr int kPortalReleaseMargin = 960;
+  if (m_barrierInfo.empty()) {
+    // Barriers may still be applying asynchronously; switch edges still know where
+    // ReleaseAt must stay clear of (output-3 bottom → sp7).
+    const auto edges = switchEdges();
+    if (edges.empty()) {
+      return;
+    }
+    Bounds portalBounds;
+    if (!getPortalBounds(portalBounds)) {
+      return;
+    }
+    std::int32_t computerX = 0;
+    std::int32_t computerY = 0;
+    std::int32_t computerW = 0;
+    std::int32_t computerH = 0;
+    m_computer->getShape(computerX, computerY, computerW, computerH);
+    const int computerRight = computerX + computerW - 1;
+    const int computerBottom = computerY + computerH - 1;
+    // Map portal point → computer, nudge using edge spans as zone-local sides, map back.
+    double cx = static_cast<double>(
+        scaleCoordinateBetweenRanges(x, portalBounds.left, portalBounds.right, computerX, computerRight)
+    );
+    double cy = static_cast<double>(
+        scaleCoordinateBetweenRanges(y, portalBounds.top, portalBounds.bottom, computerY, computerBottom)
+    );
+    const double beforeX = x;
+    const double beforeY = y;
+    for (const auto &span : edges) {
+      using enum Direction;
+      // Synthesize a one-monitor-thick zone around the switch edge for the helper.
+      deskflow::ReleaseSwitchEdge edge;
+      const int alongPad = kPortalReleaseMargin;
+      switch (span.side) {
+      case Left:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Left;
+        edge.zoneLeft = span.position;
+        edge.zoneRight = span.position + alongPad * 2;
+        edge.zoneTop = span.begin;
+        edge.zoneBottom = span.end;
+        break;
+      case Right:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Right;
+        edge.zoneRight = span.position;
+        edge.zoneLeft = span.position - alongPad * 2;
+        edge.zoneTop = span.begin;
+        edge.zoneBottom = span.end;
+        break;
+      case Top:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Top;
+        edge.zoneTop = span.position;
+        edge.zoneBottom = span.position + alongPad * 2;
+        edge.zoneLeft = span.begin;
+        edge.zoneRight = span.end;
+        break;
+      case Bottom:
+        edge.side = deskflow::ReleaseSwitchEdge::Side::Bottom;
+        edge.zoneBottom = span.position;
+        edge.zoneTop = span.position - alongPad * 2;
+        edge.zoneLeft = span.begin;
+        edge.zoneRight = span.end;
+        break;
+      case NoDirection:
+        continue;
+      }
+      deskflow::nudgeReleaseAwayFromSwitchEdges(cx, cy, &edge, 1, kPortalReleaseMargin);
+    }
+    x = static_cast<double>(
+        scaleCoordinateBetweenRanges(cx, computerX, computerRight, portalBounds.left, portalBounds.right)
+    );
+    y = static_cast<double>(
+        scaleCoordinateBetweenRanges(cy, computerY, computerBottom, portalBounds.top, portalBounds.bottom)
+    );
+    if (x != beforeX || y != beforeY) {
+      LOG_DEBUG("nudged portal release (switch-edge fallback) from %.1f,%.1f to %.1f,%.1f", beforeX, beforeY, x, y);
+    }
+    return;
+  }
+
+  std::vector<deskflow::ReleaseSwitchEdge> edges;
+  edges.reserve(m_barrierInfo.size());
+  for (const auto &info : m_barrierInfo) {
+    deskflow::ReleaseSwitchEdge edge;
+    edge.zoneLeft = info.x;
+    edge.zoneTop = info.y;
+    edge.zoneRight = info.x + static_cast<gint>(info.width) - 1;
+    edge.zoneBottom = info.y + static_cast<gint>(info.height) - 1;
+    using enum BarrierSide;
+    switch (info.side) {
+    case Left:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Left;
+      break;
+    case Right:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Right;
+      break;
+    case Top:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Top;
+      break;
+    case Bottom:
+      edge.side = deskflow::ReleaseSwitchEdge::Side::Bottom;
+      break;
+    }
+    edges.push_back(edge);
+  }
+  const double beforeX = x;
+  const double beforeY = y;
+  deskflow::nudgeReleaseAwayFromSwitchEdges(x, y, edges.data(), edges.size(), kPortalReleaseMargin);
+  if (x != beforeX || y != beforeY) {
+    LOG_DEBUG("nudged portal release from %.1f,%.1f to %.1f,%.1f (away from switch barriers)", beforeX, beforeY, x, y);
+  }
 }
 
 std::pair<double, double> PortalInputCapture::mapPortalReleasePosition(double x, double y) const
@@ -486,6 +842,21 @@ std::pair<double, double> PortalInputCapture::mapPortalReleasePosition(double x,
 
   auto mappedX = static_cast<std::int32_t>(std::lround(x));
   auto mappedY = static_cast<std::int32_t>(std::lround(y));
+
+  // A monitor layout releases inside whichever monitor was entered. Scaling the
+  // computer point into the portal keeps it off the bounding-box edge. Then
+  // nudge away from switch barriers: ReleaseAt near a concave bottom edge
+  // (e.g. portrait output above a stacked neighbour) re-activates capture.
+  if (monitorEdges()) {
+    double mappedPortalX = static_cast<double>(
+        scaleCoordinateBetweenRanges(x, computerLeft, computerRight, portalBounds.left, portalBounds.right)
+    );
+    double mappedPortalY = static_cast<double>(
+        scaleCoordinateBetweenRanges(y, computerTop, computerBottom, portalBounds.top, portalBounds.bottom)
+    );
+    nudgeMappedReleaseAwayFromBarriers(mappedPortalX, mappedPortalY);
+    return {mappedPortalX, mappedPortalY};
+  }
 
   if (BarrierInfo releaseBarrier; getClosestReleaseBarrier(
           x, y, computerLeft, computerTop, computerRight, computerBottom, portalBounds, releaseBarrier
@@ -556,6 +927,21 @@ void PortalInputCapture::addBarrier(
     break;
   }
 
+  LOG_DEBUG("barrier (%s) %u at %d,%d-%d,%d", barrierSideName(side), id, x1, y1, x2, y2);
+  m_barriers.push_back(XDP_INPUT_CAPTURE_POINTER_BARRIER(
+      g_object_new(XDP_TYPE_INPUT_CAPTURE_POINTER_BARRIER, "id", id, "x1", x1, "y1", y1, "x2", x2, "y2", y2, nullptr)
+  ));
+  m_barrierInfo.push_back({id, side, zoneX, zoneY, zoneWidth, zoneHeight, x1, y1, x2, y2});
+}
+
+void PortalInputCapture::addBarrierSegment(
+    guint id, BarrierSide side, gint zoneX, gint zoneY, guint zoneWidth, guint zoneHeight, gint x1, gint y1, gint x2,
+    gint y2
+)
+{
+  if (x1 != x2 && y1 != y2) {
+    return;
+  }
   LOG_DEBUG("barrier (%s) %u at %d,%d-%d,%d", barrierSideName(side), id, x1, y1, x2, y2);
   m_barriers.push_back(XDP_INPUT_CAPTURE_POINTER_BARRIER(
       g_object_new(XDP_TYPE_INPUT_CAPTURE_POINTER_BARRIER, "id", id, "x1", x1, "y1", y1, "x2", x2, "y2", y2, nullptr)
@@ -657,21 +1043,286 @@ void PortalInputCapture::disable()
   }
 }
 
-void PortalInputCapture::release()
+bool PortalInputCapture::release()
 {
-  LOG_DEBUG("releasing input capture session, id=%d", m_activationId);
-  xdp_input_capture_session_release(m_session, m_activationId);
-  m_isActive = false;
+  const auto request = m_recovery.requestRelease(false);
+  if (!request.plain && !request.atPosition) {
+    return false;
+  }
+  queueRelease(request.plain, false, 0, 0, request.activationId);
+  return true;
 }
 
-void PortalInputCapture::release(double x, double y)
+bool PortalInputCapture::release(double x, double y)
 {
-  const auto [mappedX, mappedY] = mapPortalReleasePosition(x, y);
-  LOG_DEBUG(
-      "releasing input capture session, id=%d x=%.1f y=%.1f mapped=%.1f,%.1f", m_activationId, x, y, mappedX, mappedY
+  // Reading the zone bounds is only safe while a grab is held: that is when
+  // barrier rebuilds are deferred and will not mutate them.
+  if (!m_recovery.captured() && !m_recovery.emulating()) {
+    return false;
+  }
+  bool inside = false;
+  double mappedX = x;
+  double mappedY = y;
+  if (Bounds portalBounds; getPortalBounds(portalBounds)) {
+    const auto mapped = mapPortalReleasePosition(x, y);
+    mappedX = mapped.first;
+    mappedY = mapped.second;
+    inside = releasePositionInsideZone(
+        mappedX, mappedY, portalBounds.left, portalBounds.top, portalBounds.right, portalBounds.bottom
+    );
+  }
+  const auto request = m_recovery.requestRelease(inside);
+  if (!request.plain && !request.atPosition) {
+    return false;
+  }
+  // One call only. ReleaseAt followed by a plain Release races a barrier
+  // bounce: the warp reactivates capture and the second call drops that new
+  // grab, or is ignored, so the return never releases it.
+  if (request.atPosition) {
+    queueRelease(false, true, mappedX, mappedY, request.activationId);
+  } else {
+    queueRelease(true, false, 0, 0, request.activationId);
+  }
+  return true;
+}
+
+std::shared_ptr<PortalInputCapture::CaptureRelease> PortalInputCapture::takeReleaseJob(guint &idleId)
+{
+  std::lock_guard lock(m_edgeMutex);
+  idleId = m_releaseIdle;
+  m_releaseIdle = 0;
+  auto job = std::move(m_releaseJob);
+  return job;
+}
+
+void PortalInputCapture::releaseSynchronously()
+{
+  guint releaseIdle = 0;
+  auto releaseJob = takeReleaseJob(releaseIdle);
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+  if (m_session == nullptr || !m_recovery.captured()) {
+    return;
+  }
+  const auto id = m_recovery.activationId();
+  LOG_DEBUG("releasing input capture session, id=%u", id);
+  xdp_input_capture_session_release(m_session, id);
+  m_recovery.setDeactivated(id);
+}
+
+void PortalInputCapture::cancelPendingRelease()
+{
+  m_recovery.cancelQueuedRelease();
+  guint releaseIdle = 0;
+  auto releaseJob = takeReleaseJob(releaseIdle);
+  if (releaseIdle != 0) {
+    g_source_remove(releaseIdle);
+  }
+  releaseJob.reset();
+}
+
+void PortalInputCapture::noteEmulating(std::uint32_t sequence)
+{
+  m_recovery.noteEmulating(sequence);
+}
+
+void PortalInputCapture::noteStoppedEmulating()
+{
+  if (m_recovery.noteStoppedEmulating()) {
+    onCaptureBecameIdle();
+  }
+}
+
+void PortalInputCapture::onCaptureBecameIdle()
+{
+  if (!m_portalAlive.load()) {
+    return;
+  }
+  if (m_recovery.takeRecreateSession()) {
+    LOG_INFO("recreating input capture session so pointer barriers can be applied");
+    m_computer->scheduleInputCaptureRecreate();
+    return;
+  }
+  if (!m_recovery.barriersDirty()) {
+    return;
+  }
+  // GNOME rejects SetPointerBarriers for the rest of an enabled session
+  // ("Session already enabled"). Reapplying here fails the same way the
+  // idle retry did. Rebuild the session; its setup applies barriers before
+  // Enable().
+  if (m_enabled) {
+    const auto rebuild = m_recovery.noteEnabledSessionRejectedBarriers();
+    if (rebuild == InputCaptureRecovery::SessionRebuild::Now) {
+      LOG_INFO("pointer barriers changed while the input capture session is enabled; recreating the session");
+      m_computer->scheduleInputCaptureRecreate();
+    } else {
+      LOG_INFO(
+          "pointer barriers changed while the input capture session is enabled; "
+          "recreating the session after the pointer is released"
+      );
+    }
+    return;
+  }
+  LOG_INFO("reapplying pointer barriers after input capture released");
+  scheduleDeferredBarrierApply();
+}
+
+void PortalInputCapture::scheduleDeferredBarrierApply()
+{
+  guint previous = 0;
+  auto token = std::make_shared<bool>(true);
+  std::shared_ptr<bool> discarded;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_deferredBarrierIdle;
+    m_deferredBarrierIdle = 0;
+    discarded = std::move(m_deferredBarrierToken);
+    m_deferredBarrierToken = token;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  discarded.reset();
+
+  // Hop to the glib thread. This runs from the libei dispatch thread, and
+  // libportal is not safe to call there.
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        std::shared_ptr<bool> token;
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          token = std::move(self->m_deferredBarrierToken);
+          self->m_deferredBarrierIdle = 0;
+        }
+        if (!token || !self->m_portalAlive.load() || self->m_session == nullptr) {
+          return G_SOURCE_REMOVE;
+        }
+        if (!self->m_recovery.takeDeferredBarriers()) {
+          return G_SOURCE_REMOVE;
+        }
+        self->handleZonesChanged(self->m_session, nullptr, true);
+        return G_SOURCE_REMOVE;
+      },
+      this
   );
-  xdp_input_capture_session_release_at(m_session, m_activationId, mappedX, mappedY);
-  m_isActive = false;
+
+  if (idle == 0) {
+    std::lock_guard lock(m_edgeMutex);
+    if (m_deferredBarrierToken == token) {
+      m_deferredBarrierToken.reset();
+    }
+    return;
+  }
+
+  std::lock_guard lock(m_edgeMutex);
+  // The callback may already have taken the token. Only publish the source
+  // id while this request is still the one waiting to run.
+  if (m_deferredBarrierToken == token) {
+    m_deferredBarrierIdle = idle;
+  }
+}
+
+void PortalInputCapture::queueRelease(bool plain, bool atPosition, double x, double y, std::uint32_t activationId)
+{
+  if ((!plain && !atPosition) || !m_portalAlive.load()) {
+    return;
+  }
+
+  auto job = std::make_shared<CaptureRelease>();
+  job->plain = plain;
+  job->atPosition = atPosition;
+  job->x = x;
+  job->y = y;
+  job->activationId = activationId;
+
+  guint previous = 0;
+  auto discarded = takeReleaseJob(previous);
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_releaseJob = job;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  discarded.reset();
+
+  const auto idle = g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        guint ignored = 0;
+        auto job = self->takeReleaseJob(ignored);
+        if (!job || !self->m_portalAlive.load() || self->m_session == nullptr) {
+          return G_SOURCE_REMOVE;
+        }
+        const auto claimed = self->m_recovery.claimQueuedRelease(job->activationId);
+        if (!claimed.send) {
+          LOG_INFO("not releasing input capture id=%u; the grab changed or the pointer left again", job->activationId);
+          return G_SOURCE_REMOVE;
+        }
+        // Exactly one Release. A second call in the same turn lands on the
+        // activation a barrier bounce just started.
+        if (job->atPosition && claimed.activationId == job->activationId) {
+          LOG_INFO("releasing input capture session, id=%u x=%.1f y=%.1f", claimed.activationId, job->x, job->y);
+          xdp_input_capture_session_release_at(self->m_session, claimed.activationId, job->x, job->y);
+        } else {
+          LOG_INFO("releasing input capture session, id=%u", claimed.activationId);
+          xdp_input_capture_session_release(self->m_session, claimed.activationId);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  if (idle == 0) {
+    std::lock_guard lock(m_edgeMutex);
+    if (m_releaseJob == job) {
+      m_releaseJob.reset();
+    }
+    return;
+  }
+
+  std::lock_guard lock(m_edgeMutex);
+  // The callback may already have cleared the id. Only publish it if this job
+  // is still the one waiting to run.
+  if (m_releaseJob == job) {
+    m_releaseIdle = idle;
+  }
+}
+
+void PortalInputCapture::scheduleBarrierRetry()
+{
+  guint previous = 0;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_barrierRetry;
+    m_barrierRetry = 0;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+
+  const auto id = g_timeout_add(
+      200,
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_barrierRetry = 0;
+        }
+        if (self->m_portalAlive.load() && self->m_session != nullptr &&
+            self->m_recovery.phase() == InputCaptureRecovery::CapturePhase::Idle) {
+          self->handleZonesChanged(self->m_session, nullptr, false);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this
+  );
+
+  std::lock_guard lock(m_edgeMutex);
+  m_barrierRetry = id;
 }
 
 void PortalInputCapture::handleDisabled(const XdpInputCaptureSession *, const GVariant *)
@@ -682,21 +1333,46 @@ void PortalInputCapture::handleDisabled(const XdpInputCaptureSession *, const GV
     return; // Nothing to do
 
   m_enabled = false;
-  m_isActive = false;
+  m_recovery.setDisabled();
 
   // FIXME: need some better heuristics here of when we want to enable again
   // But we don't know *why* we got disabled (and it's doubtfull we ever
   // will), so we just assume that the zones will change or something and we
   // can re-enable again
   // ... very soon
-  g_timeout_add(
+  guint previous = 0;
+  {
+    std::lock_guard lock(m_edgeMutex);
+    previous = m_reenableTimeout;
+    m_reenableTimeout = 0;
+  }
+  if (previous != 0) {
+    g_source_remove(previous);
+  }
+  const auto reenable = g_timeout_add(
       1000,
       [](gpointer data) -> gboolean {
-        static_cast<PortalInputCapture *>(data)->enable();
-        return false;
+        auto *self = static_cast<PortalInputCapture *>(data);
+        {
+          std::lock_guard lock(self->m_edgeMutex);
+          self->m_reenableTimeout = 0;
+        }
+        if (!self->m_portalAlive.load()) {
+          return G_SOURCE_REMOVE;
+        }
+        self->enable();
+        if (self->m_session != nullptr && self->m_recovery.takeDeferredBarriers()) {
+          LOG_INFO("reapplying pointer barriers after input capture was re-enabled");
+          self->handleZonesChanged(self->m_session, nullptr, true);
+        }
+        return G_SOURCE_REMOVE;
       },
       this
   );
+  {
+    std::lock_guard lock(m_edgeMutex);
+    m_reenableTimeout = reenable;
+  }
 }
 
 void PortalInputCapture::handleActivated(
@@ -737,7 +1413,7 @@ void PortalInputCapture::handleActivated(
     LOG_WARN("activation has no options");
   }
   m_activationId = activationId;
-  m_isActive = true;
+  m_recovery.setActivated(activationId);
 
 #ifdef HAVE_LIBPORTAL_CLIPBOARD
   if (m_session) {
@@ -768,11 +1444,20 @@ void PortalInputCapture::handleDeactivated(
 )
 {
   LOG_DEBUG("cb deactivated, id=%i", activationId);
-  m_isActive = false;
+  const bool wasCaptured = m_recovery.captured();
+  m_recovery.setDeactivated(activationId);
+  if (wasCaptured && !m_recovery.captured()) {
+    onCaptureBecameIdle();
+  }
 }
 
-void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, const GVariant *)
+void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, const GVariant *, bool fresh)
 {
+  if (m_recovery.requestBarrierUpdate(fresh) == InputCaptureRecovery::BarrierApply::Defer) {
+    LOG_INFO("deferring pointer barrier update until input capture is released");
+    return;
+  }
+
   for (auto b : m_barriers)
     g_object_unref(b);
   m_barriers.clear();
@@ -783,67 +1468,248 @@ void PortalInputCapture::handleZonesChanged(XdpInputCaptureSession *session, con
 
   auto zones = xdp_input_capture_session_get_zones(session);
 
-  // First pass: compute the bounding box (union) of all input-capture zones.
-  // A pointer barrier must lie on the outer boundary of the combined desktop and
-  // be adjacent to a single monitor edge. A barrier placed on an internal edge
-  // between two adjacent monitors is rejected by the portal ("adjacent to
-  // multiple monitor edges"), and a single rejected barrier fails the whole
-  // barrier set - so on a multi-monitor server input capture never engages.
+  struct Zone
+  {
+    gint x = 0;
+    gint y = 0;
+    guint width = 0;
+    guint height = 0;
+
+    gint right() const
+    {
+      return x + static_cast<gint>(width);
+    }
+    gint bottom() const
+    {
+      return y + static_cast<gint>(height);
+    }
+  };
+  struct Interval
+  {
+    gint begin = 0;
+    gint end = 0;
+  };
+
+  std::vector<Zone> zoneList;
   gint unionLeft = 0;
   gint unionTop = 0;
   gint unionRight = 0;
   gint unionBottom = 0;
   bool boundsInit = false;
   for (auto z = zones; z != nullptr; z = z->next) {
-    guint w;
-    guint h;
-    gint x;
-    gint y;
-    g_object_get(z->data, "width", &w, "height", &h, "x", &x, "y", &y, nullptr);
-    const gint right = x + static_cast<gint>(w);
-    const gint bottom = y + static_cast<gint>(h);
+    Zone zone;
+    g_object_get(z->data, "width", &zone.width, "height", &zone.height, "x", &zone.x, "y", &zone.y, nullptr);
+    LOG_DEBUG("input capture zone, %dx%d@%d,%d", zone.width, zone.height, zone.x, zone.y);
     if (!boundsInit) {
-      unionLeft = x;
-      unionTop = y;
-      unionRight = right;
-      unionBottom = bottom;
+      unionLeft = zone.x;
+      unionTop = zone.y;
+      unionRight = zone.right();
+      unionBottom = zone.bottom();
       boundsInit = true;
     } else {
-      unionLeft = std::min(unionLeft, x);
-      unionTop = std::min(unionTop, y);
-      unionRight = std::max(unionRight, right);
-      unionBottom = std::max(unionBottom, bottom);
+      unionLeft = std::min(unionLeft, zone.x);
+      unionTop = std::min(unionTop, zone.y);
+      unionRight = std::max(unionRight, zone.right());
+      unionBottom = std::max(unionBottom, zone.bottom());
     }
+    zoneList.push_back(zone);
   }
 
-  // Second pass: only add a barrier for a zone edge that is part of the outer
-  // boundary of the union (i.e. not an internal seam between two monitors).
+  if (boundsInit && unionRight > unionLeft && unionBottom > unionTop) {
+    m_zoneUnion = {unionLeft, unionTop, unionRight - 1, unionBottom - 1};
+    m_hasZoneUnion = true;
+  } else {
+    m_hasZoneUnion = false;
+  }
+
+  // A barrier on a seam shared by two zones is rejected ("adjacent to multiple
+  // monitor edges") and fails the whole set. Free intervals are the parts of a
+  // zone edge that no other zone touches, including concave notches inside the
+  // bounding box. Those notches are still the outside boundary of the union.
+  const auto freeAlong = [](gint begin, gint end, std::vector<Interval> blocked) {
+    std::sort(blocked.begin(), blocked.end(), [](const Interval &a, const Interval &b) { return a.begin < b.begin; });
+    std::vector<Interval> free;
+    gint cursor = begin;
+    for (const auto &block : blocked) {
+      const gint blockBegin = std::max(block.begin, begin);
+      const gint blockEnd = std::min(block.end, end);
+      if (blockEnd <= blockBegin) {
+        continue;
+      }
+      if (blockBegin > cursor) {
+        free.push_back({cursor, blockBegin});
+      }
+      cursor = std::max(cursor, blockEnd);
+    }
+    if (cursor < end) {
+      free.push_back({cursor, end});
+    }
+    return free;
+  };
+
+  const auto blockedIntervals = [&zoneList](const Zone &zone, BarrierSide side) {
+    std::vector<Interval> blocked;
+    for (const auto &other : zoneList) {
+      if (&other == &zone) {
+        continue;
+      }
+      bool touches = false;
+      Interval interval;
+      using enum BarrierSide;
+      switch (side) {
+      case Left:
+        touches = other.right() == zone.x;
+        interval = {other.y, other.bottom()};
+        break;
+      case Right:
+        touches = other.x == zone.right();
+        interval = {other.y, other.bottom()};
+        break;
+      case Top:
+        touches = other.bottom() == zone.y;
+        interval = {other.x, other.right()};
+        break;
+      case Bottom:
+        touches = other.y == zone.bottom();
+        interval = {other.x, other.right()};
+        break;
+      }
+      if (touches) {
+        blocked.push_back(interval);
+      }
+    }
+    return blocked;
+  };
+
   guint id = 0;
-  while (zones != nullptr) {
-    guint w;
-    guint h;
-    gint x;
-    gint y;
-    g_object_get(zones->data, "width", &w, "height", &h, "x", &x, "y", &y, nullptr);
-
-    LOG_DEBUG("input capture zone, %dx%d@%d,%d", w, h, x, y);
-
-    if ((activeSides & static_cast<int>(LeftMask)) && x == unionLeft) {
-      addBarrier(++id, BarrierSide::Left, x, y, w, h);
+  const bool useMonitorEdges = monitorEdges();
+  if (!useMonitorEdges) {
+    for (const auto &zone : zoneList) {
+      if ((activeSides & static_cast<int>(LeftMask)) && zone.x == unionLeft) {
+        addBarrier(++id, BarrierSide::Left, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(RightMask)) && zone.right() == unionRight) {
+        addBarrier(++id, BarrierSide::Right, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(TopMask)) && zone.y == unionTop) {
+        addBarrier(++id, BarrierSide::Top, zone.x, zone.y, zone.width, zone.height);
+      }
+      if ((activeSides & static_cast<int>(BottomMask)) && zone.bottom() == unionBottom) {
+        addBarrier(++id, BarrierSide::Bottom, zone.x, zone.y, zone.width, zone.height);
+      }
     }
+  } else {
+    std::int32_t computerX = 0;
+    std::int32_t computerY = 0;
+    std::int32_t computerW = 0;
+    std::int32_t computerH = 0;
+    m_computer->getShape(computerX, computerY, computerW, computerH);
+    const int computerRight = computerX + computerW - 1;
+    const int computerBottom = computerY + computerH - 1;
+    const int portalLeft = unionLeft;
+    const int portalTop = unionTop;
+    const int portalRight = std::max(unionLeft, unionRight - 1);
+    const int portalBottom = std::max(unionTop, unionBottom - 1);
+    const auto edges = switchEdges();
+    constexpr int kPositionTolerance = 8;
 
-    if ((activeSides & static_cast<int>(RightMask)) && (x + static_cast<gint>(w)) == unionRight) {
-      addBarrier(++id, BarrierSide::Right, x, y, w, h);
-    }
+    const auto toComputerX = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, portalLeft, portalRight, computerX, computerRight);
+    };
+    const auto toComputerY = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, portalTop, portalBottom, computerY, computerBottom);
+    };
+    const auto toPortalX = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, computerX, computerRight, portalLeft, portalRight);
+    };
+    const auto toPortalY = [&](double value) {
+      return scaleCoordinateBetweenRanges(value, computerY, computerBottom, portalTop, portalBottom);
+    };
 
-    if ((activeSides & static_cast<int>(TopMask)) && y == unionTop) {
-      addBarrier(++id, BarrierSide::Top, x, y, w, h);
-    }
+    const auto placeFree = [&](bool matchEdges) {
+      int placed = 0;
+      for (const auto &zone : zoneList) {
+        const struct Side
+        {
+          BarrierSide barrier;
+          Direction direction;
+          bool vertical;
+          gint line;
+          gint inclusive;
+          gint alongBegin;
+          gint alongEnd;
+        } sides[] = {
+            {BarrierSide::Left, Direction::Left, true, zone.x, zone.x, zone.y, zone.bottom()},
+            {BarrierSide::Right, Direction::Right, true, zone.right(), zone.right() - 1, zone.y, zone.bottom()},
+            {BarrierSide::Top, Direction::Top, false, zone.y, zone.y, zone.x, zone.right()},
+            {BarrierSide::Bottom, Direction::Bottom, false, zone.bottom(), zone.bottom() - 1, zone.x, zone.right()},
+        };
+        for (const auto &side : sides) {
+          const auto free = freeAlong(side.alongBegin, side.alongEnd, blockedIntervals(zone, side.barrier));
+          for (const auto &interval : free) {
+            if (interval.end <= interval.begin) {
+              continue;
+            }
+            const auto addSegment = [&](gint along0, gint along1) {
+              if (along1 < along0) {
+                std::swap(along0, along1);
+              }
+              gint x1 = 0;
+              gint y1 = 0;
+              gint x2 = 0;
+              gint y2 = 0;
+              if (side.vertical) {
+                x1 = x2 = side.line;
+                y1 = along0;
+                y2 = along1;
+              } else {
+                y1 = y2 = side.line;
+                x1 = along0;
+                x2 = along1;
+              }
+              addBarrierSegment(++id, side.barrier, zone.x, zone.y, zone.width, zone.height, x1, y1, x2, y2);
+              ++placed;
+            };
+            if (!matchEdges) {
+              addSegment(interval.begin, interval.end - 1);
+              continue;
+            }
 
-    if ((activeSides & static_cast<int>(BottomMask)) && (y + static_cast<gint>(h)) == unionBottom) {
-      addBarrier(++id, BarrierSide::Bottom, x, y, w, h);
+            const int computerPosition = side.vertical ? toComputerX(side.inclusive) : toComputerY(side.inclusive);
+            const int scaledBegin = side.vertical ? toComputerY(interval.begin) : toComputerX(interval.begin);
+            const int scaledEnd = side.vertical ? toComputerY(interval.end - 1) : toComputerX(interval.end - 1);
+            const int alongMin = std::min(scaledBegin, scaledEnd);
+            const int alongMax = std::max(scaledBegin, scaledEnd);
+            for (const auto &edge : edges) {
+              if (edge.side != side.direction || std::abs(edge.position - computerPosition) > kPositionTolerance) {
+                continue;
+              }
+              const int overlapBegin = std::max(edge.begin, alongMin);
+              const int overlapEnd = std::min(edge.end, alongMax);
+              if (overlapEnd < overlapBegin) {
+                continue;
+              }
+              gint portalBegin = 0;
+              gint portalEnd = 0;
+              if (side.vertical) {
+                portalBegin = std::clamp(toPortalY(overlapBegin), interval.begin, interval.end - 1);
+                portalEnd = std::clamp(toPortalY(overlapEnd), interval.begin, interval.end - 1);
+              } else {
+                portalBegin = std::clamp(toPortalX(overlapBegin), interval.begin, interval.end - 1);
+                portalEnd = std::clamp(toPortalX(overlapEnd), interval.begin, interval.end - 1);
+              }
+              addSegment(portalBegin, portalEnd);
+            }
+          }
+        }
+      }
+      return placed;
+    };
+
+    if (placeFree(true) == 0 && !edges.empty()) {
+      LOG_WARN("monitor switch edges did not match portal zones; capturing every free monitor edge");
+      placeFree(false);
     }
-    zones = zones->next;
   }
 
   GList *list = nullptr;

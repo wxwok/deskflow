@@ -36,6 +36,7 @@ public:
   Handles reconfiguration of jump zones.
   */
   virtual void reconfigure(uint32_t activeSides);
+  void setMonitorSwitchEdges(const std::vector<deskflow::EdgeSpan> &edges);
 
   //! Register a system hotkey
   /*!
@@ -106,6 +107,7 @@ public:
   void *getEventTarget() const override;
   bool getClipboard(ClipboardID id, IClipboard *) const override;
   void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const override;
+  std::vector<deskflow::MonitorRect> getMonitors() const override;
   void getCursorPos(int32_t &x, int32_t &y) const override;
 
   // IClient overrides

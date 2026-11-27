@@ -14,6 +14,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -58,6 +59,7 @@ public:
   void *getEventTarget() const override;
   bool getClipboard(ClipboardID id, IClipboard *) const override;
   void getShape(int32_t &x, int32_t &y, int32_t &width, int32_t &height) const override;
+  std::vector<deskflow::MonitorRect> getMonitors() const override;
   void getCursorPos(int32_t &x, int32_t &y) const override;
 
   /**
@@ -272,6 +274,7 @@ private:
 
   // true if system appears to have multiple monitors
   bool m_multimon = false;
+  std::vector<deskflow::MonitorRect> m_monitors;
 
   // last mouse position
   int32_t m_xCursor = 0;
