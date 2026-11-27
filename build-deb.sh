@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: (C) 2026 Deskflow Developers
+# SPDX-License-Identifier: MIT
 # Build script for deskflow .deb package on Ubuntu 24.04
 # Bundles libportal 0.8.1 and Qt 6.8.3 in a private directory
 # to avoid conflicts with system libraries.
