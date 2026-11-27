@@ -1276,8 +1276,7 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   const bool disabled = deskflow::isComputerDisabled(computer.name);
   const bool server = computer.name == m_serverName;
   const bool offline =
-      !server && !disabled &&
-      !deskflow::connectedComputerNames().contains(computer.name, Qt::CaseInsensitive);
+      !server && !disabled && !deskflow::connectedComputerNames().contains(computer.name, Qt::CaseInsensitive);
   const auto *primary = largestMonitor(computer);
 
   painter->save();
@@ -1450,9 +1449,8 @@ void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &tr
       painter->setFont(rowFont);
       const auto &rowComputer = m_layout.at(member);
       const bool rowDisabled = deskflow::isComputerDisabled(rowComputer.name);
-      const bool rowOffline =
-          rowComputer.name != m_serverName && !rowDisabled &&
-          !deskflow::connectedComputerNames().contains(rowComputer.name, Qt::CaseInsensitive);
+      const bool rowOffline = rowComputer.name != m_serverName && !rowDisabled &&
+                              !deskflow::connectedComputerNames().contains(rowComputer.name, Qt::CaseInsensitive);
       if (rowDisabled) {
         painter->setPen(QColor(120, 120, 120));
       } else if (rowOffline) {
