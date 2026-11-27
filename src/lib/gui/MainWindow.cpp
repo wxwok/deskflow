@@ -19,6 +19,8 @@
 #include "dialogs/HelpDialog.h"
 #include "dialogs/ServerConfigDialog.h"
 #include "dialogs/SettingsDialog.h"
+#include "gui/phone/PhoneController.h"
+#include "gui/widgets/MonitorLayoutWidget.h"
 
 #include "common/PlatformInfo.h"
 #include "common/Settings.h"
@@ -79,6 +81,8 @@ MainWindow::MainWindow()
       m_actionRestartCore{new QAction(this)},
       m_actionStopCore{new QAction(this)},
       m_actionShowHelp{new QAction(this)},
+      m_actionMonitorLayout{new QAction(this)},
+      m_phoneController{new deskflow::phone::PhoneController(m_serverConfig, this)},
       m_networkMonitor{new NetworkMonitor(this)}
 {
   ui->setupUi(this);
@@ -122,6 +126,9 @@ MainWindow::MainWindow()
   m_actionShowHelp->setIcon(QIcon::fromTheme(QStringLiteral("question")));
   m_actionShowHelp->setMenuRole(QAction::NoRole);
   m_actionShowHelp->setShortcut(QKeySequence::HelpContents);
+
+  m_actionMonitorLayout->setIcon(QIcon::fromTheme(QStringLiteral("video-display")));
+  m_actionMonitorLayout->setMenuRole(QAction::NoRole);
 
   // Setup the Instance Checking
   // In case of a previous crash remove first
@@ -267,6 +274,7 @@ void MainWindow::connectSlots()
   connect(m_actionRestartCore, &QAction::triggered, this, &MainWindow::resetCore);
   connect(m_actionStopCore, &QAction::triggered, this, &MainWindow::stopCore);
   connect(m_actionShowHelp, &QAction::triggered, this, &MainWindow::showHelpViewer);
+  connect(m_actionMonitorLayout, &QAction::triggered, this, [this]() { m_phoneController->openMonitorLayout(this); });
 
   // Mac os tray will only show a menu
   if (!deskflow::platform::isMac())
@@ -670,6 +678,7 @@ void MainWindow::createMenuBar()
   m_menuEdit->addAction(m_actionSettings);
 
   m_menuView->addAction(m_logDock->toggleViewAction());
+  m_menuView->addAction(m_actionMonitorLayout);
 
   m_menuHelp->addAction(m_actionAbout);
   m_menuHelp->addAction(m_actionShowHelp);
@@ -687,8 +696,10 @@ void MainWindow::setupTrayIcon()
 {
   auto trayMenu = new QMenu(this);
   trayMenu->addActions(
-      {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_actionMinimize, m_actionRestore, m_actionTrayQuit}
+      {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_actionMonitorLayout, m_actionMinimize,
+       m_actionRestore, m_actionTrayQuit}
   );
+  trayMenu->insertSeparator(m_actionMonitorLayout);
   trayMenu->insertSeparator(m_actionMinimize);
   trayMenu->insertSeparator(m_actionTrayQuit);
   m_trayIcon->setContextMenu(trayMenu);
@@ -1069,6 +1080,7 @@ void MainWindow::updateText()
   m_actionAbout->setText(tr("About %1...").arg(kAppName));
 
   m_actionShowHelp->setText(tr("View &Help"));
+  m_actionMonitorLayout->setText(tr("Monitor &layout"));
 
   //: start / restart core shortcut
   m_actionStartCore->setShortcut(QKeySequence(tr("Ctrl+S")));
@@ -1088,6 +1100,9 @@ void MainWindow::showConfigureServer(const QString &message)
 {
   ServerConfigDialog dialog(this, serverConfig());
   dialog.message(message);
+  if (auto *layout = dialog.findChild<MonitorLayoutWidget *>()) {
+    m_phoneController->bind(layout);
+  }
   connect(&m_coreProcess, &CoreProcess::monitorGeometryChanged, &dialog, &ServerConfigDialog::applyReportedGeometry);
   connect(&m_coreProcess, &CoreProcess::connectedClientsChanged, &dialog, &ServerConfigDialog::refreshMonitorDiscovery);
   if ((dialog.exec() == QDialog::Accepted) && m_coreProcess.isStarted()) {

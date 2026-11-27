@@ -378,6 +378,12 @@ QVariant Settings::defaultValue(const QString &key)
   if (key == Server::ClipboardSize)
     return 3; // 3 MiB
 
+  if (key == Gui::PhoneClipboardShortcut)
+    return QStringLiteral("Ctrl+Alt+E");
+
+  if (key == Gui::ScrcpyExecutable || key == Gui::AdbExecutable)
+    return QString();
+
   return QVariant();
 }
 

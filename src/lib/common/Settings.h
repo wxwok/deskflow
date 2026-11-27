@@ -85,6 +85,10 @@ public:
     inline static const auto ShownServerFirstStartMessage = QStringLiteral("gui/shownServerFirstStartMessage");
     inline static const auto ShowVersionInTitle = QStringLiteral("gui/showVersionInTitle");
     inline static const auto IgnoreMissingKeyboardLayouts = QStringLiteral("gui/ignoreMissingKeyboardLayouts");
+    inline static const auto AndroidPhones = QStringLiteral("gui/androidPhones");
+    inline static const auto ScrcpyExecutable = QStringLiteral("gui/scrcpyExecutable");
+    inline static const auto AdbExecutable = QStringLiteral("gui/adbExecutable");
+    inline static const auto PhoneClipboardShortcut = QStringLiteral("gui/phoneClipboardShortcut");
   };
   struct Log
   {
@@ -323,6 +327,10 @@ private:
     , Gui::ShownServerFirstStartMessage
     , Gui::ShowVersionInTitle
     , Gui::IgnoreMissingKeyboardLayouts
+    , Gui::AndroidPhones
+    , Gui::ScrcpyExecutable
+    , Gui::AdbExecutable
+    , Gui::PhoneClipboardShortcut
     , Security::Certificate
     , Security::CheckPeers
     , Security::KeySize
@@ -382,6 +390,7 @@ private:
     , Gui::CloseReminder
     , Gui::LogExpanded
     , Gui::SymbolicTrayIcon
+    , Gui::AndroidPhones
     , Security::TlsEnabled
     , Security::CheckPeers
     , Server::EnableClipboard

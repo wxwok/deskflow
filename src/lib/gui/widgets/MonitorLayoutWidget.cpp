@@ -97,6 +97,11 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   m_discoveryLayout->setContentsMargins(0, 0, 0, 0);
   m_status = new QLabel(m_controls);
   m_status->setWordWrap(true);
+  m_phoneStatus = new QLabel(m_controls);
+  m_phoneStatus->setWordWrap(true);
+  m_phonePanel = new QWidget(m_controls);
+  auto *phoneLayout = new QVBoxLayout(m_phonePanel);
+  phoneLayout->setContentsMargins(0, 0, 0, 0);
   auto *reload = new QPushButton(tr("Reload reported geometry"), m_controls);
   m_participation = new QPushButton(tr("Disable"), m_controls);
   m_stackFront = new QPushButton(tr("Bring to front"), m_controls);
@@ -142,6 +147,8 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
   controls->addWidget(m_hint);
   controls->addWidget(m_discoveryLabel);
   controls->addWidget(m_discoveryHost);
+  controls->addWidget(m_phoneStatus);
+  controls->addWidget(m_phonePanel);
   controls->addWidget(m_status);
   controls->addLayout(originRow);
   layout->addWidget(m_controls);
@@ -168,7 +175,14 @@ MonitorLayoutWidget::MonitorLayoutWidget(ServerConfig &config, QWidget *parent) 
     update();
   });
   const auto originEdited = [this](int) {
-    if (m_updatingOrigin || m_selected < 0) {
+    if (m_updatingOrigin) {
+      return;
+    }
+    if (!m_selectedPhone.isEmpty()) {
+      moveSelectedPhone(m_originX->value(), m_originY->value());
+      return;
+    }
+    if (m_selected < 0) {
       return;
     }
     moveComputer(m_selected, m_originX->value(), m_originY->value(), false);
@@ -577,6 +591,14 @@ MonitorLayoutWidget::Transform MonitorLayoutWidget::viewTransform() const
       any = true;
     }
   }
+  for (const auto &phone : m_phones) {
+    if (!phone.placed || phone.width < 1 || phone.height < 1) {
+      continue;
+    }
+    const QRect rect(phone.originX, phone.originY, phone.width, phone.height);
+    bounds = any ? bounds.united(rect) : rect;
+    any = true;
+  }
   if (!any) {
     bounds = {0, 0, kPlaceholderWidth, kPlaceholderHeight};
   }
@@ -689,6 +711,31 @@ void MonitorLayoutWidget::moveComputer(int index, int originX, int originY, bool
 
 void MonitorLayoutWidget::syncOriginFields()
 {
+  if (!m_selectedPhone.isEmpty()) {
+    const deskflow::phone::PhoneLayoutItem *phone = nullptr;
+    for (const auto &item : m_phones) {
+      if (item.id == m_selectedPhone) {
+        phone = &item;
+        break;
+      }
+    }
+    m_originX->setEnabled(phone != nullptr);
+    m_originY->setEnabled(phone != nullptr);
+    m_participation->setEnabled(false);
+    m_participation->setText(tr("Disable"));
+    m_participation->setToolTip(tr("A phone that disconnects is Offline. It is not marked Disabled."));
+    updateStackButtons();
+    if (phone == nullptr) {
+      m_originLabel->setText(tr("No computer selected"));
+      return;
+    }
+    m_originLabel->setText(phone->label.isEmpty() ? phone->id : phone->label);
+    m_updatingOrigin = true;
+    m_originX->setValue(phone->originX);
+    m_originY->setValue(phone->originY);
+    m_updatingOrigin = false;
+    return;
+  }
   const bool selected = m_selected >= 0 && m_selected < m_layout.size();
   const bool editable = selected && m_layout.at(m_selected).name != m_serverName;
   m_originX->setEnabled(editable);
@@ -709,6 +756,15 @@ void MonitorLayoutWidget::syncOriginFields()
 
 void MonitorLayoutWidget::nudge(int dx, int dy, bool enableSnap)
 {
+  if (!m_selectedPhone.isEmpty()) {
+    for (const auto &phone : m_phones) {
+      if (phone.id == m_selectedPhone) {
+        moveSelectedPhone(phone.originX + dx, phone.originY + dy);
+        return;
+      }
+    }
+    return;
+  }
   if (m_selected < 0 || m_selected >= m_layout.size()) {
     return;
   }
@@ -819,6 +875,7 @@ void MonitorLayoutWidget::paintEvent(QPaintEvent *)
       }
     }
   }
+  paintPhones(&painter, transform);
   paintStackNames(&painter, transform);
 
   if (m_dragIndex >= 0) {
@@ -874,6 +931,22 @@ void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
 {
   if (event->button() == Qt::RightButton) {
     setFocus(Qt::MouseFocusReason);
+    const int phone = phoneAt(event->position());
+    if (phone >= 0) {
+      m_selected = -1;
+      m_dragIndex = -1;
+      m_phoneDrag = -1;
+      m_selectedPhone = m_phones.at(phone).id;
+      syncOriginFields();
+      update();
+      QMenu menu(this);
+      auto *unregister = menu.addAction(tr("Unregister phone"));
+      if (menu.exec(event->globalPosition().toPoint()) == unregister) {
+        Q_EMIT unregisterPhoneRequested(m_selectedPhone);
+      }
+      return;
+    }
+    m_selectedPhone.clear();
     m_selected = computerAt(event->position(), true);
     m_dragIndex = -1;
     syncOriginFields();
@@ -885,6 +958,21 @@ void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
     return;
   }
   setFocus(Qt::MouseFocusReason);
+  const int phone = phoneAt(event->position());
+  if (phone >= 0) {
+    m_selected = -1;
+    m_dragIndex = -1;
+    m_phoneDrag = phone;
+    m_selectedPhone = m_phones.at(phone).id;
+    m_phoneFreeX = m_phones.at(phone).originX;
+    m_phoneFreeY = m_phones.at(phone).originY;
+    m_dragLast = event->position();
+    syncOriginFields();
+    update();
+    return;
+  }
+  m_selectedPhone.clear();
+  m_phoneDrag = -1;
   m_selected = computerAt(event->position(), true);
   m_dragIndex = computerAt(event->position(), false);
   m_dragLast = event->position();
@@ -900,6 +988,21 @@ void MonitorLayoutWidget::mousePressEvent(QMouseEvent *event)
 
 void MonitorLayoutWidget::mouseMoveEvent(QMouseEvent *event)
 {
+  if (m_phoneDrag >= 0 && m_phoneDrag < m_phones.size()) {
+    const auto transform = viewTransform();
+    if (transform.scale <= 0.0) {
+      return;
+    }
+    const auto delta = event->position() - m_dragLast;
+    m_dragLast = event->position();
+    m_phoneFreeX += delta.x() / transform.scale;
+    m_phoneFreeY += delta.y() / transform.scale;
+    m_phones[m_phoneDrag].originX = static_cast<int>(std::lround(m_phoneFreeX));
+    m_phones[m_phoneDrag].originY = static_cast<int>(std::lround(m_phoneFreeY));
+    syncOriginFields();
+    update();
+    return;
+  }
   if (m_dragIndex < 0 || m_dragIndex >= m_layout.size()) {
     updateFan(event->position());
     return;
@@ -919,9 +1022,13 @@ void MonitorLayoutWidget::mouseMoveEvent(QMouseEvent *event)
 
 void MonitorLayoutWidget::mouseReleaseEvent(QMouseEvent *)
 {
-  if (m_dragIndex >= 0) {
+  if (m_phoneDrag >= 0 && m_phoneDrag < m_phones.size()) {
+    const auto &phone = m_phones.at(m_phoneDrag);
+    Q_EMIT phoneMoved(phone.id, phone.originX, phone.originY);
+  } else if (m_dragIndex >= 0) {
     store();
   }
+  m_phoneDrag = -1;
   m_dragIndex = -1;
   m_guides.clear();
   update();
@@ -1276,8 +1383,7 @@ void MonitorLayoutWidget::paintFanCard(QPainter *painter, int index) const
   const bool disabled = deskflow::isComputerDisabled(computer.name);
   const bool server = computer.name == m_serverName;
   const bool offline =
-      !server && !disabled &&
-      !deskflow::connectedComputerNames().contains(computer.name, Qt::CaseInsensitive);
+      !server && !disabled && !deskflow::connectedComputerNames().contains(computer.name, Qt::CaseInsensitive);
   const auto *primary = largestMonitor(computer);
 
   painter->save();
@@ -1450,9 +1556,8 @@ void MonitorLayoutWidget::paintStackNames(QPainter *painter, const Transform &tr
       painter->setFont(rowFont);
       const auto &rowComputer = m_layout.at(member);
       const bool rowDisabled = deskflow::isComputerDisabled(rowComputer.name);
-      const bool rowOffline =
-          rowComputer.name != m_serverName && !rowDisabled &&
-          !deskflow::connectedComputerNames().contains(rowComputer.name, Qt::CaseInsensitive);
+      const bool rowOffline = rowComputer.name != m_serverName && !rowDisabled &&
+                              !deskflow::connectedComputerNames().contains(rowComputer.name, Qt::CaseInsensitive);
       if (rowDisabled) {
         painter->setPen(QColor(120, 120, 120));
       } else if (rowOffline) {
@@ -1480,4 +1585,116 @@ QRect MonitorLayoutWidget::stackRosterChip(const QString &name) const
     }
   }
   return {};
+}
+
+void MonitorLayoutWidget::setPhoneLayouts(const QList<deskflow::phone::PhoneLayoutItem> &phones)
+{
+  if (m_phoneDrag >= 0 && m_phoneDrag < m_phones.size()) {
+    const auto draggedId = m_phones.at(m_phoneDrag).id;
+    const int draggedX = m_phones.at(m_phoneDrag).originX;
+    const int draggedY = m_phones.at(m_phoneDrag).originY;
+    m_phones = phones;
+    for (int index = 0; index < m_phones.size(); ++index) {
+      if (m_phones.at(index).id == draggedId) {
+        m_phones[index].originX = draggedX;
+        m_phones[index].originY = draggedY;
+        m_phoneDrag = index;
+        break;
+      }
+    }
+  } else {
+    m_phones = phones;
+  }
+  if (!m_selectedPhone.isEmpty()) {
+    bool stillThere = false;
+    for (const auto &phone : m_phones) {
+      if (phone.id == m_selectedPhone) {
+        stillThere = true;
+        break;
+      }
+    }
+    if (!stillThere) {
+      m_selectedPhone.clear();
+    }
+  }
+  syncOriginFields();
+  update();
+}
+
+void MonitorLayoutWidget::setPhoneStatus(const QString &status)
+{
+  m_phoneStatus->setText(status);
+}
+
+QRect MonitorLayoutWidget::paintRect(const Transform &transform, const QRect &layoutRect) const
+{
+  return {
+      static_cast<int>(std::lround(transform.originX + layoutRect.x() * transform.scale)),
+      static_cast<int>(std::lround(transform.originY + layoutRect.y() * transform.scale)),
+      std::max(1, static_cast<int>(std::lround(layoutRect.width() * transform.scale))),
+      std::max(1, static_cast<int>(std::lround(layoutRect.height() * transform.scale)))
+  };
+}
+
+int MonitorLayoutWidget::phoneAt(const QPointF &widgetPoint) const
+{
+  const auto transform = viewTransform();
+  for (int index = m_phones.size() - 1; index >= 0; --index) {
+    const auto &phone = m_phones.at(index);
+    if (!phone.placed) {
+      continue;
+    }
+    if (paintRect(transform, QRect(phone.originX, phone.originY, phone.width, phone.height))
+            .contains(widgetPoint.toPoint())) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+void MonitorLayoutWidget::moveSelectedPhone(int originX, int originY)
+{
+  for (auto &phone : m_phones) {
+    if (phone.id != m_selectedPhone) {
+      continue;
+    }
+    phone.originX = originX;
+    phone.originY = originY;
+    m_phoneFreeX = originX;
+    m_phoneFreeY = originY;
+    Q_EMIT phoneMoved(phone.id, originX, originY);
+    update();
+    return;
+  }
+}
+
+void MonitorLayoutWidget::paintPhones(QPainter *painter, const Transform &transform) const
+{
+  static const QColor kPhoneFill(32, 128, 132);
+  static const QColor kOfflineFill(68, 112, 138);
+  for (const auto &phone : m_phones) {
+    if (!phone.placed) {
+      continue;
+    }
+    const QRect painted = paintRect(transform, QRect(phone.originX, phone.originY, phone.width, phone.height));
+    const bool selected = phone.id == m_selectedPhone;
+    painter->fillRect(painted, phone.online ? kPhoneFill : kOfflineFill);
+    QPen pen(selected ? QColor(255, 220, 120) : (phone.online ? QColor(180, 235, 230) : QColor(140, 200, 230)));
+    pen.setWidth(2);
+    pen.setStyle(phone.online ? Qt::SolidLine : Qt::DashLine);
+    painter->setPen(pen);
+    painter->drawRect(painted.adjusted(0, 0, -1, -1));
+    painter->setPen(Qt::white);
+    const auto title = phone.label.isEmpty() ? phone.id : phone.label;
+    painter->drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignLeft | Qt::AlignTop, title);
+    if (!phone.online) {
+      painter->setPen(QColor(210, 235, 245));
+      painter->drawText(painted.adjusted(4, 4, -4, -4), Qt::AlignCenter, tr("Offline"));
+      painter->setPen(QPen(QColor(210, 235, 245), 2));
+      const QRect icon =
+          painted.adjusted(painted.width() / 3, painted.height() / 5, -painted.width() / 3, -painted.height() / 2);
+      painter->drawRoundedRect(icon, 3, 3);
+      painter->drawLine(icon.topLeft(), icon.bottomRight());
+    }
+  }
 }
