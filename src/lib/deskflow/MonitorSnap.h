@@ -149,8 +149,8 @@ inline SnapGuide guideOn(bool vertical, int32_t position, int32_t a0, int32_t a1
   SnapGuide guide;
   guide.vertical = vertical;
   guide.position = position;
-  guide.begin = std::min(a0, b0);
-  guide.end = std::max(a1, b1);
+  guide.begin = (std::min)(a0, b0);
+  guide.end = (std::max)(a1, b1);
   return guide;
 }
 
@@ -251,7 +251,7 @@ inline std::vector<Interval> mergeIntervals(std::vector<Interval> intervals)
   merged.push_back(intervals.front());
   for (size_t index = 1; index < intervals.size(); ++index) {
     if (intervals[index].begin <= merged.back().end) {
-      merged.back().end = std::max(merged.back().end, intervals[index].end);
+      merged.back().end = (std::max)(merged.back().end, intervals[index].end);
     } else {
       merged.push_back(intervals[index]);
     }
@@ -273,9 +273,9 @@ inline std::vector<Interval> subtractIntervals(const std::vector<Interval> &base
         break;
       }
       if (cut.begin > cursor) {
-        result.push_back({cursor, std::min(cut.begin, span.end)});
+        result.push_back({cursor, (std::min)(cut.begin, span.end)});
       }
-      cursor = std::max(cursor, cut.end);
+      cursor = (std::max)(cursor, cut.end);
       if (cursor >= span.end) {
         break;
       }
@@ -300,8 +300,8 @@ inline void collectContacts(
     if (interval.begin >= interval.end) {
       continue;
     }
-    const int32_t begin = std::max(interval.begin, spanBegin);
-    const int32_t end = std::min(interval.end, spanEnd);
+    const int32_t begin = (std::max)(interval.begin, spanBegin);
+    const int32_t end = (std::min)(interval.end, spanEnd);
     if (begin < end) {
       segments.push_back(SwitchSegment{vertical, position, begin, end});
     }
@@ -447,15 +447,15 @@ inline std::vector<SwitchSegment> switchEdgeSegments(const std::vector<SnapRect>
         continue;
       }
       if (other.x == monitor.right()) {
-        const int32_t begin = std::max(monitor.y, other.y);
-        const int32_t end = std::min(monitor.bottom(), other.bottom());
+        const int32_t begin = (std::max)(monitor.y, other.y);
+        const int32_t end = (std::min)(monitor.bottom(), other.bottom());
         if (begin < end) {
           (other.group == monitor.group ? rightBlocked : rightRemote).push_back({begin, end});
         }
       }
       if (other.y == monitor.bottom()) {
-        const int32_t begin = std::max(monitor.x, other.x);
-        const int32_t end = std::min(monitor.right(), other.right());
+        const int32_t begin = (std::max)(monitor.x, other.x);
+        const int32_t end = (std::min)(monitor.right(), other.right());
         if (begin < end) {
           (other.group == monitor.group ? bottomBlocked : bottomRemote).push_back({begin, end});
         }

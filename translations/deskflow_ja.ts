@@ -858,6 +858,10 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>Drag a computer so its monitors touch or overlap another computer. Edges within about 12 px snap together and line up; hold Alt or Shift to turn snapping off. A computer you drop on top of another comes to the front. Arrow keys nudge by 1 px, or by 10 px with Shift; hold Alt to nudge without snapping. The server stays put. Orange lines are the edges that will switch. Where screens overlap, only the front one receives the pointer; the ones underneath are paused there and stay in the layout. Leave this off to keep the grid links.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Offline</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>NewComputerWidget</name>

@@ -858,6 +858,10 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>Reorder computers that overlap. The front screen receives the pointer; screens underneath are paused there, not disabled. These stay off when the selection does not overlap another computer.</source>
         <translation>调整互相重叠的计算机的顺序。最前面的屏幕接收指针，下面的在该处暂停，这不是禁用。所选计算机没有与其他计算机重叠时，这些按钮保持灰色。</translation>
     </message>
+    <message>
+        <source>Offline</source>
+        <translation>离线</translation>
+    </message>
 </context>
 <context>
     <name>NewComputerWidget</name>
