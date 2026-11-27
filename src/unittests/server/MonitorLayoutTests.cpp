@@ -226,11 +226,11 @@ void MonitorLayoutTests::snapAdjacencyAndAlignment()
   QCOMPARE(static_cast<int>(both.guides.size()), 2);
 
   // Farther than the threshold on every edge: stay put.
-  const auto far = deskflow::snapMonitorPlacement({placed(1, 130, 0, 50, 40)}, still, threshold, true);
-  QCOMPARE(far.dx, 0);
-  QCOMPARE(far.dy, 0);
-  QVERIFY(!far.snappedX);
-  QVERIFY(!far.snappedY);
+  const auto beyond = deskflow::snapMonitorPlacement({placed(1, 130, 0, 50, 40)}, still, threshold, true);
+  QCOMPARE(beyond.dx, 0);
+  QCOMPARE(beyond.dy, 0);
+  QVERIFY(!beyond.snappedX);
+  QVERIFY(!beyond.snappedY);
 
   // Two horizontal candidates: the nearer edge wins.
   const std::vector<deskflow::SnapRect> pair = {placed(0, 0, 0, 100, 100), placed(0, 160, 0, 100, 100)};
