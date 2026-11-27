@@ -519,9 +519,11 @@ void MonitorLayoutTests::stackFailoverOutsideTheLiveLayout()
         {member.name, member.z, member.order, deskflow::StackAvailability::Available, member.x, member.y}
     );
   }
-  QVERIFY(deskflow::appendStackCandidate(
-      candidates, "sp7", 2, -1, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
-  ));
+  QVERIFY(
+      deskflow::appendStackCandidate(
+          candidates, "sp7", 2, -1, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
+      )
+  );
   QVERIFY(!deskflow::appendStackCandidate(
       candidates, "SP7", 2, -2, deskflow::StackAvailability::Available, 100, 100, {saved}, 150, 150
   ));
@@ -546,13 +548,17 @@ void MonitorLayoutTests::stackFailoverOutsideTheLiveLayout()
         {member.name, member.z, member.order, deskflow::StackAvailability::Available, member.x, member.y}
     );
   }
-  QVERIFY(deskflow::appendStackCandidate(
-      remaining, "sur3", 1, -1, deskflow::StackAvailability::Disconnected, 100, 100, {monitor("sur3", 0, 0, 800, 600)},
-      150, 150
-  ));
-  QVERIFY(deskflow::appendStackCandidate(
-      remaining, "sp7", 2, -2, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
-  ));
+  QVERIFY(
+      deskflow::appendStackCandidate(
+          remaining, "sur3", 1, -1, deskflow::StackAvailability::Disconnected, 100, 100,
+          {monitor("sur3", 0, 0, 800, 600)}, 150, 150
+      )
+  );
+  QVERIFY(
+      deskflow::appendStackCandidate(
+          remaining, "sp7", 2, -2, deskflow::StackAvailability::Disconnected, 100, 100, {saved}, 150, 150
+      )
+  );
   const auto droppedAgain = deskflow::chooseActiveStackLayer(remaining);
   QVERIFY(droppedAgain.active == "work");
   QCOMPARE(droppedAgain.x, 150);
